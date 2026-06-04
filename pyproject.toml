@@ -1,0 +1,142 @@
+# =============================================================================
+# pyproject.toml — the project manifest (PEP 621)
+# =============================================================================
+# LESSON: Module 0 (Setup & Tooling). See docs/00-setup.md
+#
+# JAVA NOTE: This single file plays the role that several files play in a Java
+#   project. It is your `pom.xml` / `build.gradle` (project metadata + build
+#   config) AND your tool configuration (Checkstyle/Spotless ≈ ruff,
+#   `maven-compiler-plugin` strictness ≈ mypy, Surefire ≈ pytest config). One
+#   file, declaratively configured, parsed by many tools.
+#
+# WHY one file? The Python community standardized on `pyproject.toml` (PEP 518 +
+#   PEP 621) so that build backends and dev tools read configuration from a
+#   single, predictable place instead of a scatter of setup.py / setup.cfg /
+#   tox.ini / .flake8 files. We follow that north star here.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [build-system] — how this project is built into an installable package.
+# -----------------------------------------------------------------------------
+# JAVA NOTE: This is the "which build tool builds me" declaration, like choosing
+#   Maven vs Gradle. `setuptools` is the classic, batteries-included backend.
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# -----------------------------------------------------------------------------
+# [project] — PEP 621 metadata: the identity of the package.
+# -----------------------------------------------------------------------------
+[project]
+name = "pytegration"
+version = "0.1.0"
+description = "Teaching-grade FastAPI Task Manager + Claude agent for Java developers learning Python."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "PyTegration" }]
+keywords = ["fastapi", "teaching", "agent", "anthropic", "starter"]
+
+# WHY do runtime dependencies live here AND in requirements.txt?
+#   - This list expresses *abstract* dependencies (what the package needs to
+#     work, with loose version ranges) — the contract.
+#   - requirements.txt expresses *concrete, pinned* versions for a reproducible
+#     environment — the lockfile-style snapshot.
+#   JAVA NOTE: think `<dependencies>` ranges in pom.xml vs a fully-resolved
+#   dependency tree. We keep both so the lesson shows the difference explicitly.
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.34,<1.0",
+    "pydantic>=2.10,<3.0",
+    "pydantic-settings>=2.7,<3.0",
+    "sqlalchemy>=2.0.36,<2.1",
+    "aiosqlite>=0.20,<1.0",
+    "alembic>=1.14,<2.0",
+    "anthropic>=0.45,<1.0",
+    "httpx>=0.28,<1.0",
+]
+
+[project.optional-dependencies]
+# JAVA NOTE: these are like Maven's `test` scope dependencies — needed for
+#   development/CI but not shipped to production runtime.
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-asyncio>=0.25,<1.0",
+    "ruff>=0.9,<1.0",
+    "mypy>=1.14,<2.0",
+    "pre-commit>=4.0,<5.0",
+    "pip-audit>=2.7,<3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/dirjit/pytegration"
+
+# -----------------------------------------------------------------------------
+# [tool.setuptools] — tell the build backend WHERE the source code lives.
+# -----------------------------------------------------------------------------
+# WHY `src/` layout? When the importable code lives under `src/`, you cannot
+#   accidentally `import pytegration` from the repo root — you must install the
+#   package first (`pip install -e .`). This catches "works on my machine but
+#   not when installed" bugs early.
+#   JAVA NOTE: analogous to `src/main/java` keeping sources separate from the
+#   project root and build artifacts.
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# =============================================================================
+# Tool configuration (collocated so newcomers find everything in one place).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [tool.ruff] — linter AND formatter in one fast tool.
+# -----------------------------------------------------------------------------
+# JAVA NOTE: ruff replaces a whole toolbox at once: flake8 (lint) + isort
+#   (import order) + black (format) ≈ Checkstyle + Spotless + the formatter.
+#   One tool means one config and one mental model.
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# A curated rule set that is strict but not noisy. Each code is a rule family:
+#   E/W=pycodestyle, F=pyflakes, I=isort, N=pep8-naming, UP=pyupgrade,
+#   B=bugbear (likely bugs), S=flake8-bandit (security), C4=comprehensions,
+#   SIM=simplify, RUF=ruff-specific.
+select = ["E", "W", "F", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+]
+
+[tool.ruff.lint.per-file-ignores]
+# WHY relax `S` (security) rules in tests? `assert` (S101) is the heart of
+#   pytest, and tests legitimately use hardcoded fake secrets (S105/S106).
+"tests/**/*.py" = ["S101", "S105", "S106"]
+
+# -----------------------------------------------------------------------------
+# [tool.mypy] — static type checking. Brings Java-like compile-time safety.
+# -----------------------------------------------------------------------------
+# WHY strict? Type hints are only as valuable as the checker that enforces them.
+#   We turn the strict knobs on so the learner experiences Python *with* a type
+#   safety net — the closest thing to `javac` rejecting bad code.
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]  # teaches mypy how Pydantic models are typed
+
+# Third-party libs without type stubs would otherwise produce noise.
+[[tool.mypy.overrides]]
+module = ["aiosqlite.*"]
+ignore_missing_imports = true
+
+# -----------------------------------------------------------------------------
+# [tool.pytest.ini_options] — test runner configuration.
+# -----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+# JAVA NOTE: `testpaths` ≈ Surefire's test directory; `asyncio_mode = "auto"`
+#   lets `async def test_...` functions run without per-test annotations
+#   (contrast: JUnit needs explicit setup for async).
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra -q"

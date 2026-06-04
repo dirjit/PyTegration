@@ -1,0 +1,40 @@
+# =============================================================================
+# .gitignore — files that must never be committed
+# =============================================================================
+# LESSON: Module 0 / Module 6 (Config & Secrets).
+# SECURITY: the single most important line below is `.env` — it keeps real
+#   secrets (API keys) out of version control. A leaked key in git history is
+#   very hard to fully purge, so we prevent the commit in the first place.
+# =============================================================================
+
+# Secrets / local config — NEVER commit these
+.env
+.env.*
+!.env.example          # ...but DO commit the documented template
+
+# Python virtual environment (re-created from requirements, never committed)
+.venv/
+venv/
+
+# Python bytecode caches and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Local SQLite databases (data, not code)
+*.db
+*.sqlite3
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor/OS noise
+.idea/
+.vscode/
+.DS_Store

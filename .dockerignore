@@ -1,0 +1,28 @@
+# =============================================================================
+# .dockerignore — keep the Docker build context small AND secure
+# =============================================================================
+# LESSON: Module 0 / Module 8 (Security).
+# SECURITY: anything listed here is NOT sent to the Docker daemon during a
+#   build, which means it can never accidentally end up baked into an image
+#   layer. We exclude secrets (.env), local state (.venv, *.db), and git
+#   history (.git) — none of which belong in a production image.
+# =============================================================================
+
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+docs/
+.github/
+README.md

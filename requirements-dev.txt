@@ -1,0 +1,21 @@
+# =============================================================================
+# requirements-dev.txt — pinned DEV/TEST/LINT dependencies
+# =============================================================================
+# LESSON: Module 0 (Setup & Tooling). See docs/00-setup.md
+#
+# SYNTAX TIP: the `-r` directive includes another requirements file. Installing
+#   this file therefore installs the runtime deps too, so a single command sets
+#   up a complete development environment:
+#       pip install -r requirements-dev.txt
+#   JAVA NOTE: this is how we model Maven's `test` scope inheriting `compile`
+#   scope — dev tooling is a superset of runtime.
+# =============================================================================
+
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.0
+ruff==0.9.1
+mypy==1.14.1
+pre-commit==4.0.1
+pip-audit==2.7.3

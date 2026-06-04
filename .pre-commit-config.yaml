@@ -1,0 +1,44 @@
+# =============================================================================
+# .pre-commit-config.yaml — automatic quality gates before each commit
+# =============================================================================
+# LESSON: Module 0 / Module 8 (Security & quality).
+#
+# JAVA NOTE: pre-commit is the equivalent of a git pre-commit hook or a
+#   build-gate that runs Checkstyle/Spotless before code lands. It runs the
+#   same checks locally that CI runs remotely, so you catch issues in seconds
+#   instead of minutes.
+#
+# HOW TO ENABLE (one time per clone):
+#   pre-commit install
+# After that, the hooks below run automatically on `git commit`.
+# =============================================================================
+
+repos:
+  # General hygiene hooks maintained by the pre-commit project.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      # SECURITY: this hook blocks committing private keys / obvious secrets.
+      - id: detect-private-key
+
+  # ruff: lint + format, pinned to match requirements-dev.txt for consistency.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.1
+    hooks:
+      - id: ruff          # lint, with --fix for auto-fixable issues
+        args: [--fix]
+      - id: ruff-format   # format
+
+  # mypy: static type checking on the package source.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        files: ^src/
+        additional_dependencies:
+          - pydantic

@@ -1,0 +1,30 @@
+# =============================================================================
+# requirements.txt — pinned RUNTIME dependencies
+# =============================================================================
+# LESSON: Module 0 (Setup & Tooling). See docs/00-setup.md
+#
+# JAVA NOTE: pyproject.toml lists abstract version *ranges* (the contract).
+#   This file lists concrete, pinned versions (the resolved snapshot) — think of
+#   it as the fully-resolved dependency tree you'd see in a Maven build, frozen
+#   so every machine and CI run installs the exact same bytes.
+#
+# WHY pin? Reproducibility. "It works on my machine" almost always traces back
+#   to an unpinned dependency that quietly upgraded. Pinning removes that class
+#   of bug entirely.
+#
+# PRODUCTION UPGRADE: in a real project you would generate this file with a
+#   resolver such as `pip-compile` (pip-tools) or `uv pip compile`, which also
+#   records transitive dependencies and cryptographic hashes (`--require-hashes`)
+#   so a compromised mirror cannot swap a package out from under you. We keep the
+#   list hand-curated here so the lesson stays readable.
+# =============================================================================
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+alembic==1.14.0
+anthropic==0.45.2
+httpx==0.28.1
