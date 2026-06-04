@@ -93,7 +93,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         # Expected errors are logged at WARNING — they are part of normal operation.
-        logger.warning("app_error", extra={"code": exc.code, "message": exc.message})
+        # GOTCHA: never put `message` (or other reserved LogRecord attribute names
+        #   like `args`, `name`, `levelname`) in `extra={...}` — the stdlib logger
+        #   raises KeyError on the collision. We use `detail` instead.
+        logger.warning("app_error", extra={"code": exc.code, "detail": exc.message})
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body(exc.code, exc.message),

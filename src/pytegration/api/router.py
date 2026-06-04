@@ -13,12 +13,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from pytegration.api.routes import health
+from pytegration.api.routes import health, tasks
 
 # Health checks live at the root (no version prefix) so probes hit /health.
 root_router = APIRouter()
 root_router.include_router(health.router)
 
-# Versioned business endpoints live under /api/v1. The tasks and agent routers
-# are added here in later slices.
+# Versioned business endpoints live under /api/v1. The agent router is added
+# here in a later slice.
 api_v1_router = APIRouter(prefix="/api/v1")
+api_v1_router.include_router(tasks.router)

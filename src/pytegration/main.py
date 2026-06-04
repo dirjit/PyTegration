@@ -26,7 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pytegration import __version__
 from pytegration.api.router import api_v1_router, root_router
 from pytegration.core.config import Settings, get_settings
+from pytegration.core.errors import register_exception_handlers
 from pytegration.core.logging import configure_logging, get_logger
+from pytegration.db.session import create_engine, create_session_factory
 
 logger = get_logger(__name__)
 
@@ -38,12 +40,25 @@ logger = get_logger(__name__)
 #   the whole application rather than a single bean.
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Run startup and shutdown logic around the app's serving lifetime."""
+    """Run startup and shutdown logic around the app's serving lifetime.
+
+    WHY create the engine HERE rather than at import time? The database engine
+        owns a connection pool — a real resource. Creating it on startup and
+        disposing it on shutdown ties its lifetime to the app's, and lets tests
+        spin up isolated apps without leaking connections.
+    """
     settings: Settings = app.state.settings
     logger.info("application starting", extra={"app_env": settings.app_env.value})
-    # (Database engine disposal and other resource cleanup are added in later
-    #  slices; the structure is in place now.)
+
+    engine = create_engine(settings)
+    app.state.engine = engine
+    app.state.session_factory = create_session_factory(engine)
+
     yield
+
+    # SYNTAX TIP: code after `yield` runs on shutdown. Disposing the engine closes
+    #   every pooled connection cleanly — the analog of closing a Hikari pool.
+    await engine.dispose()
     logger.info("application shutting down")
 
 
@@ -94,9 +109,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # ----- Error handling ----------------------------------------------------
+    # Translate domain exceptions into the standard JSON error envelope.
+    register_exception_handlers(app)
+
     # ----- Routes ------------------------------------------------------------
     app.include_router(root_router)  # /health, /ready
-    app.include_router(api_v1_router)  # /api/v1/... (filled in by later slices)
+    app.include_router(api_v1_router)  # /api/v1/...
 
     return app
 
