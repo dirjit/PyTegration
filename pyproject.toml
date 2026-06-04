@@ -139,4 +139,7 @@ ignore_missing_imports = true
 #   (contrast: JUnit needs explicit setup for async).
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Each test (and its async fixtures) gets its own event loop — the safe default
+# that keeps tests isolated. Setting it explicitly silences a future-default warning.
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra -q"
