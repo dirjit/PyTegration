@@ -1,0 +1,39 @@
+# =============================================================================
+# docker-compose.yml — one command to build and run the whole app locally
+# =============================================================================
+# LESSON: Module 0 (Setup & Tooling). See docs/00-setup.md
+#
+# USAGE:  docker compose up --build      # serves on http://localhost:8000
+#
+# JAVA NOTE: Compose is the local-orchestration analog of a docker-compose /
+#   Tilt / a simple Kubernetes manifest — it declares services, their config,
+#   and their storage so a teammate can run everything with a single command.
+# =============================================================================
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      # SECURITY: a real deployment would inject these from a secrets manager,
+      #   never hardcode them. These dev values are safe placeholders.
+      API_KEY: dev-local
+      LLM_PROVIDER: mock        # offline by default; set to "claude" + a key to use the API
+      ANTHROPIC_API_KEY: ""
+      DATABASE_URL: sqlite+aiosqlite:////data/pytegration.db
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      # Persist the SQLite database across container restarts.
+      - taskdata:/data
+    # Apply migrations, THEN start the server. `sh -c` lets us chain the two.
+    command: sh -c "alembic upgrade head && uvicorn pytegration.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  taskdata:
