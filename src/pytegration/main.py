@@ -28,6 +28,7 @@ from pytegration.api.router import api_v1_router, root_router
 from pytegration.core.config import Settings, get_settings
 from pytegration.core.errors import register_exception_handlers
 from pytegration.core.logging import configure_logging, get_logger
+from pytegration.core.middleware import RateLimitMiddleware, RequestContextMiddleware
 from pytegration.db.session import create_engine, create_session_factory
 
 logger = get_logger(__name__)
@@ -98,9 +99,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
 
     # ----- Middleware --------------------------------------------------------
-    # SECURITY: CORS is restricted to an explicit allow-list from settings, never
-    #   "*". `allow_credentials=True` with a wildcard origin is a known footgun
-    #   the browser will reject anyway.
+    # GOTCHA (ordering): `add_middleware` PREPENDS, so the LAST one added is the
+    #   OUTERMOST (runs first on the way in). We add them so the processing order
+    #   is: RequestContext -> RateLimit -> CORS -> routes. That way every log line
+    #   (including rate-limit rejections) already carries the request id.
+
+    # Innermost: CORS. SECURITY: restricted to an explicit allow-list from
+    # settings, never "*" (a wildcard origin with credentials is a known footgun).
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -108,6 +113,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Middle: per-identity rate limiting.
+    app.add_middleware(
+        RateLimitMiddleware,
+        capacity=settings.rate_limit_capacity,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+    # Outermost: request id + access logging.
+    app.add_middleware(RequestContextMiddleware)
 
     # ----- Error handling ----------------------------------------------------
     # Translate domain exceptions into the standard JSON error envelope.

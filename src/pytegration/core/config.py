@@ -91,6 +91,13 @@ class Settings(BaseSettings):
     # may take before we stop it. Prevents runaway loops and runaway cost.
     agent_max_iterations: int = Field(default=6, ge=1, le=20)
 
+    # ----- Rate limiting -----------------------------------------------------
+    # Token-bucket parameters: `capacity` is the burst size, and the bucket
+    # refills `capacity` tokens over `window_seconds`. SECURITY: this caps abuse
+    # and protects expensive endpoints (especially the LLM agent).
+    rate_limit_capacity: int = Field(default=60, ge=1)
+    rate_limit_window_seconds: int = Field(default=60, ge=1)
+
     # ----- Database ----------------------------------------------------------
     database_url: str = "sqlite+aiosqlite:///./pytegration.db"
 

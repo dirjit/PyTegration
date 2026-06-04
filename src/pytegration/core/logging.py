@@ -24,7 +24,16 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+from contextvars import ContextVar
 from typing import Any
+
+# SYNTAX TIP: a `ContextVar` is async-safe, per-task state — the right tool for
+#   "current request id" because each concurrent request gets its own value
+#   without threads or globals clashing. JAVA NOTE: this is the role of SLF4J's
+#   MDC (Mapped Diagnostic Context). The request middleware sets it (see
+#   core/middleware.py); the formatter below reads it so every log line during a
+#   request carries that request's id.
+request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 # SECURITY: any log field whose (lowercased) key contains one of these tokens
 #   is replaced with "***". This is defense-in-depth so a careless
@@ -66,6 +75,12 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
+
+        # Attach the current request id (if we're inside a request) so logs can
+        # be correlated across a single request's lifetime.
+        request_id = request_id_ctx.get()
+        if request_id is not None:
+            payload["request_id"] = request_id
 
         # Include any custom fields passed via `logger.info(msg, extra={...})`,
         # redacting anything that looks like a secret.

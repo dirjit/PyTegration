@@ -11,15 +11,19 @@ WHY a single aggregating router?
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from pytegration.api.routes import health, tasks
+from pytegration.core.security import require_api_key
 
 # Health checks live at the root (no version prefix) so probes hit /health.
+# SECURITY: these stay UNAUTHENTICATED so orchestrators/load balancers can probe.
 root_router = APIRouter()
 root_router.include_router(health.router)
 
-# Versioned business endpoints live under /api/v1. The agent router is added
-# here in a later slice.
-api_v1_router = APIRouter(prefix="/api/v1")
+# Versioned business endpoints live under /api/v1.
+# SECURITY: attaching `require_api_key` at the ROUTER level protects every route
+#   below it in one place — you cannot forget to guard a new endpoint. The agent
+#   router (added later) inherits the same protection automatically.
+api_v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 api_v1_router.include_router(tasks.router)
