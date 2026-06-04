@@ -24,6 +24,8 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pytegration.agent.factory import build_provider
+from pytegration.agent.provider import LLMProvider
 from pytegration.core.config import Settings
 from pytegration.db.session import get_session_from_factory
 from pytegration.repositories.task_repository import TaskRepository
@@ -65,3 +67,16 @@ def get_task_service(session: SessionDep) -> TaskService:
 
 
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
+
+
+def get_llm_provider(settings: SettingsDep) -> LLMProvider:
+    """Select the LLM provider (Claude or mock) from configuration.
+
+    WHY a dependency rather than a global? It honors per-app settings overrides
+        (tests inject a provider by overriding this dependency) and keeps the
+        choice in one place.
+    """
+    return build_provider(settings)
+
+
+ProviderDep = Annotated[LLMProvider, Depends(get_llm_provider)]

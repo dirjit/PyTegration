@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from pytegration.api.routes import health, tasks
+from pytegration.api.routes import agent, health, tasks
 from pytegration.core.security import require_api_key
 
 # Health checks live at the root (no version prefix) so probes hit /health.
@@ -27,3 +27,4 @@ root_router.include_router(health.router)
 #   router (added later) inherits the same protection automatically.
 api_v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_api_key)])
 api_v1_router.include_router(tasks.router)
+api_v1_router.include_router(agent.router)
