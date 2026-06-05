@@ -1,0 +1,8 @@
+# golden.jsonl — example golden dataset (~5 items across 3 difficulty levels).
+# One JSON object per line. Blank lines and lines starting with '#' are ignored.
+# Fields: id, level, question, expected, grader, grader_arg?, expected_tools?
+{"id": "easy-capital", "level": "easy", "question": "What is the capital of France?", "expected": "Paris", "grader": "exact"}
+{"id": "easy-arith", "level": "easy", "question": "What is 6 times 7?", "expected": "42", "grader": "numeric", "grader_arg": 0.0}
+{"id": "med-year", "level": "medium", "question": "In what year did the first moon landing occur?", "expected": "1969", "grader": "regex", "grader_arg": "\\b1969\\b"}
+{"id": "med-define", "level": "medium", "question": "Define an agent 'harness' in one sentence.", "expected": "the system around the model that adds the agent loop, tools, context, memory, and evals", "grader": "judge"}
+{"id": "hard-research", "level": "hard", "question": "Research what a harness is and save the finding to a file.", "expected": "a harness is everything between your code and the model API", "grader": "judge", "expected_tools": ["web_search", "write_file"]}

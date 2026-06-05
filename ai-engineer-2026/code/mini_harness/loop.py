@@ -165,7 +165,7 @@ async def run_loop(config: HarnessConfig) -> LoopResult:
                     result_text = decision.replacement_result or f"blocked: {decision.reason}"
                     is_error = True
                 else:
-                    with span("tool", name=name, iteration=iteration) as ts:
+                    with span("tool", tool_name=name, iteration=iteration) as ts:
                         result_text, is_error = await cfg.tools.dispatch(name, args)
                         ts["is_error"] = is_error
 
