@@ -44,7 +44,7 @@ class GoldenItem:
     expected_tools: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "GoldenItem":
+    def from_dict(cls, d: dict[str, Any]) -> GoldenItem:
         return cls(
             id=d["id"],
             level=d.get("level", "medium"),

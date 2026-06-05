@@ -1,6 +1,6 @@
 """graders.py — Eval types #1 (deterministic) and #2 (LLM-as-judge).
 
-> A grader maps (expected, actual) → pass/fail (+ optional score & reason). Pick
+> A grader maps (expected, actual) -> pass/fail (+ optional score & reason). Pick
 > the *cheapest grader that captures what you care about*: deterministic when the
 > answer is exact/numeric, an LLM judge only when correctness is genuinely fuzzy.
 
@@ -19,8 +19,8 @@ extra calls per CI run — budget for it or gate it behind a deterministic pre-f
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 
 @dataclass
@@ -28,8 +28,8 @@ class GradeResult:
     """The uniform output of every grader."""
 
     passed: bool
-    score: float = 0.0          # 0.0–1.0; deterministic graders use 0/1
-    reason: str = ""            # human-readable why (shows up in CI logs)
+    score: float = 0.0  # 0.0-1.0; deterministic graders use 0/1
+    reason: str = ""  # human-readable why (shows up in CI logs)
 
 
 # ── Eval type #1: deterministic graders ──────────────────────────────────────
@@ -47,8 +47,11 @@ def grade_exact(expected: str, actual: str, *, strip: bool = True, ci: bool = Tr
     if ci:
         e, a = e.lower(), a.lower()
     ok = e == a
-    return GradeResult(passed=ok, score=1.0 if ok else 0.0,
-                       reason="exact match" if ok else f"expected {expected!r}, got {actual!r}")
+    return GradeResult(
+        passed=ok,
+        score=1.0 if ok else 0.0,
+        reason="exact match" if ok else f"expected {expected!r}, got {actual!r}",
+    )
 
 
 def grade_regex(pattern: str, actual: str, *, flags: int = 0) -> GradeResult:
@@ -58,8 +61,9 @@ def grade_regex(pattern: str, actual: str, *, flags: int = 0) -> GradeResult:
     an exact string — e.g. "the answer includes a 4-digit year".
     """
     ok = re.search(pattern, actual, flags) is not None
-    return GradeResult(passed=ok, score=1.0 if ok else 0.0,
-                       reason=f"/{pattern}/ {'found' if ok else 'not found'}")
+    return GradeResult(
+        passed=ok, score=1.0 if ok else 0.0, reason=f"/{pattern}/ {'found' if ok else 'not found'}"
+    )
 
 
 def grade_numeric(expected: float, actual: str | float, *, tol: float = 1e-6) -> GradeResult:
@@ -73,8 +77,11 @@ def grade_numeric(expected: float, actual: str | float, *, tol: float = 1e-6) ->
     except ValueError as exc:
         return GradeResult(passed=False, score=0.0, reason=str(exc))
     ok = abs(float(value) - float(expected)) <= tol
-    return GradeResult(passed=ok, score=1.0 if ok else 0.0,
-                       reason=f"|{value} - {expected}| {'<=' if ok else '>'} {tol}")
+    return GradeResult(
+        passed=ok,
+        score=1.0 if ok else 0.0,
+        reason=f"|{value} - {expected}| {'<=' if ok else '>'} {tol}",
+    )
 
 
 def _first_number(text: str) -> float:
@@ -90,7 +97,7 @@ def _first_number(text: str) -> float:
 
 @dataclass
 class Rubric:
-    """A 5-criterion rubric for the LLM judge. Each criterion is scored 0–1; the
+    """A 5-criterion rubric for the LLM judge. Each criterion is scored 0-1; the
     item passes if the weighted average clears `pass_threshold`.
 
     The five criteria below are a sensible default for an answer-quality judge.
@@ -99,11 +106,11 @@ class Rubric:
     produce noisy, uncalibrated judging.
     """
 
-    relevance: float = 1.0      # weight: does it answer the actual question?
-    correctness: float = 1.0    # weight: are the facts right?
-    completeness: float = 1.0   # weight: does it cover the needed points?
-    grounding: float = 1.0      # weight: is it supported / cited, not invented?
-    safety: float = 1.0         # weight: no harmful / policy-violating content?
+    relevance: float = 1.0  # weight: does it answer the actual question?
+    correctness: float = 1.0  # weight: are the facts right?
+    completeness: float = 1.0  # weight: does it cover the needed points?
+    grounding: float = 1.0  # weight: is it supported / cited, not invented?
+    safety: float = 1.0  # weight: no harmful / policy-violating content?
     pass_threshold: float = 0.7
 
     def criteria(self) -> dict[str, float]:

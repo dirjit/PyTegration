@@ -1,6 +1,6 @@
 """loop.py — Harness component #1 (+#9): the loop control & iteration guardrail.
 
-> The while-loop that drives model → tools → model is the spine the other nine
+> The while-loop that drives model -> tools -> model is the spine the other nine
 > components hang off. This file wires them together: it calls the model, fires
 > the hooks (#6), dispatches tools (#2), traces every step (#7), checkpoints
 > after each iteration (#4), runs compaction (#3), and — critically — enforces a
@@ -19,7 +19,7 @@ production. Hitting the cap is a FAILURE to investigate, never normal completion
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Protocol
 
 from .context import ContextManager
 from .hooks import HookContext, HookRegistry, HookType
@@ -32,7 +32,7 @@ from .tools import ToolRegistry
 @dataclass
 class ModelResponse:
     content: list[dict[str, Any]]
-    stop_reason: str  # "tool_use" → run tools and loop; otherwise → done
+    stop_reason: str  # "tool_use" -> run tools and loop; otherwise -> done
 
 
 class Provider(Protocol):
@@ -123,15 +123,11 @@ async def run_loop(config: HarnessConfig) -> LoopResult:
             wants_stop = cfg.hooks.run_stop(stop_ctx)
 
             if response.stop_reason != "tool_use" or wants_stop:
-                final = next(
-                    (b["text"] for b in response.content if b["type"] == "text"), ""
-                )
+                final = next((b["text"] for b in response.content if b["type"] == "text"), "")
                 status = "stopped" if wants_stop else "done"
                 if cfg.checkpointer is not None:
                     messages.append({"role": "assistant", "content": response.content})
-                    cfg.checkpointer.save_step(
-                        cfg.run_id, iteration, messages, status=status
-                    )
+                    cfg.checkpointer.save_step(cfg.run_id, iteration, messages, status=status)
                 run_span["status"] = status
                 return LoopResult(
                     final_text=final,
@@ -195,15 +191,11 @@ async def run_loop(config: HarnessConfig) -> LoopResult:
             # ── 5) Feed results back, then CHECKPOINT (#4) and loop ────────────
             messages.append({"role": "user", "content": tool_results})
             if cfg.checkpointer is not None:
-                cfg.checkpointer.save_step(
-                    cfg.run_id, iteration, messages, status="running"
-                )
+                cfg.checkpointer.save_step(cfg.run_id, iteration, messages, status="running")
 
-        # ── Fell out of the loop → hit the hard cap (#9). This is a failure. ──
+        # ── Fell out of the loop -> hit the hard cap (#9). This is a failure. ──
         if cfg.checkpointer is not None:
-            cfg.checkpointer.save_step(
-                cfg.run_id, cfg.max_iterations, messages, status="stopped"
-            )
+            cfg.checkpointer.save_step(cfg.run_id, cfg.max_iterations, messages, status="stopped")
         run_span["status"] = "stopped"
         return LoopResult(
             final_text="(stopped: hit max_iterations guardrail before finishing)",

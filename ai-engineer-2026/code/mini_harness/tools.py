@@ -20,10 +20,11 @@ pre_tool approval hook (hooks.py). Never `exec()` model output in-process
 from __future__ import annotations
 
 import inspect
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, get_args, get_origin
+from typing import Any, get_args, get_origin
 
-# Minimal Python-annotation → JSON-schema-type mapping. Extend as needed.
+# Minimal Python-annotation -> JSON-schema-type mapping. Extend as needed.
 _PY_TO_JSON: dict[Any, str] = {
     str: "string",
     int: "integer",
@@ -46,7 +47,7 @@ def _annotation_to_schema(annotation: Any) -> dict[str, Any]:
     """Turn a single parameter annotation into a JSON-schema fragment.
 
     Handles the common scalar types plus `list[T]`. TODO(student): extend to
-    Optional[T], Literal[...] (→ enum), nested dataclasses, and `dict[str, T]`.
+    Optional[T], Literal[...] (-> enum), nested dataclasses, and `dict[str, T]`.
     """
     origin = get_origin(annotation)
     if origin in (list, list):
@@ -135,7 +136,7 @@ class ToolRegistry:
         spec = self._tools[name]
         try:
             return await spec.func(**args), False
-        except Exception as exc:  # tool blew up → tell the model, keep the loop alive
+        except Exception as exc:  # tool blew up -> tell the model, keep the loop alive
             return f"error: {type(exc).__name__}: {exc}", True
 
 

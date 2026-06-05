@@ -9,10 +9,10 @@ rest of the harness has somewhere to hang behavior. The Claude Agent SDK exposes
 the same idea (PreToolUse / PostToolUse / Stop hooks); you're rebuilding it.
 
 Hook contract:
-  - pre_tool(ctx)  → may return a `HookDecision` to BLOCK a tool call (e.g. a
+  - pre_tool(ctx)  -> may return a `HookDecision` to BLOCK a tool call (e.g. a
                      human-in-the-loop gate, or a deny-list). Return None to allow.
-  - post_tool(ctx) → observe/transform a tool result (audit, redact, meter cost).
-  - stop(ctx)      → return True to stop the loop early (e.g. budget exhausted).
+  - post_tool(ctx) -> observe/transform a tool result (audit, redact, meter cost).
+  - stop(ctx)      -> return True to stop the loop early (e.g. budget exhausted).
 
 SECURITY: the pre_tool hook is the natural home for an approval gate on
 irreversible actions (send_email, delete, external POST). Promote such actions to
@@ -23,12 +23,13 @@ counter and stop the loop when it's blown, rather than discovering it on the bil
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable
+from enum import StrEnum
+from typing import Any
 
 
-class HookType(str, Enum):
+class HookType(StrEnum):
     PRE_TOOL = "pre_tool"
     POST_TOOL = "post_tool"
     STOP = "stop"
@@ -47,8 +48,8 @@ class HookContext:
     iteration: int
     tool_name: str | None = None
     tool_input: dict[str, Any] | None = None
-    result: str | None = None          # set for post_tool
-    is_error: bool = False             # set for post_tool
+    result: str | None = None  # set for post_tool
+    is_error: bool = False  # set for post_tool
     scratch: dict[str, Any] = field(default_factory=dict)  # cross-hook shared state
 
 
@@ -64,9 +65,9 @@ class HookDecision:
 
 
 # A hook is just a callable taking the context. Return type varies by hook type:
-#   pre_tool → HookDecision | None
-#   post_tool → None (mutates ctx.result in place if it wants to transform)
-#   stop → bool
+#   pre_tool -> HookDecision | None
+#   post_tool -> None (mutates ctx.result in place if it wants to transform)
+#   stop -> bool
 Hook = Callable[[HookContext], Any]
 
 

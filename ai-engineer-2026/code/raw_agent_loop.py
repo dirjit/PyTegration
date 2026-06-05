@@ -11,13 +11,13 @@ readable (curriculum README: "teaches the primitives so any framework becomes
 readable").
 
 Mapping to the 4 context primitives (Lesson 04):
-  - WRITE   → the `write_file` tool persists state OUTSIDE the window (a memory
+  - WRITE   -> the `write_file` tool persists state OUTSIDE the window (a memory
               file on disk that survives steps).
-  - SELECT  → the `web_search` / `read_file` tools pull the RIGHT tokens in at the
+  - SELECT  -> the `web_search` / `read_file` tools pull the RIGHT tokens in at the
               point of use, instead of dumping everything upfront.
-  - COMPRESS→ not shown here (see mini_harness/context.py) — would summarize when
+  - COMPRESS-> not shown here (see mini_harness/context.py) — would summarize when
               the window approaches ~85% full.
-  - ISOLATE → not shown here (see mini_harness/subagents.py) — would spawn a
+  - ISOLATE -> not shown here (see mini_harness/subagents.py) — would spawn a
               sub-agent with its own clean window.
 
 Runs with NO API KEY: the default `MockProvider` is deterministic and offline.
@@ -34,10 +34,10 @@ import asyncio
 import inspect
 import json
 import tempfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
-
+from typing import Any, Protocol
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. The tool registry: a tiny @tool decorator that captures name / description /
@@ -49,7 +49,7 @@ from typing import Any, Awaitable, Callable, Protocol
 #    once, as an ordinary function.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Map Python annotations → JSON-schema types. Kept deliberately small; a real
+# Map Python annotations -> JSON-schema types. Kept deliberately small; a real
 # harness (mini_harness/tools.py) handles more types and validation.
 _PY_TO_JSON: dict[type, str] = {
     str: "string",
@@ -204,7 +204,7 @@ class ModelResponse:
     """
 
     content: list[dict[str, Any]]
-    stop_reason: str  # "tool_use" → execute tools and loop; "end_turn" → done
+    stop_reason: str  # "tool_use" -> execute tools and loop; "end_turn" -> done
 
 
 class LLMProvider(Protocol):
@@ -224,7 +224,7 @@ class LLMProvider(Protocol):
 class MockProvider:
     """A deterministic, offline provider — no API key, no network.
 
-    It runs a fixed *script*: search → write a memory file → read it back → finish.
+    It runs a fixed *script*: search -> write a memory file -> read it back -> finish.
     That exercises every branch of the loop (tool calls, tool results, stop) so you
     can watch the mechanics without paying for tokens. Real model behavior is
     non-deterministic; this is a stand-in for teaching and for fast tests.
@@ -324,7 +324,7 @@ async def run_agent(
     task: str,
     max_iterations: int = 10,
 ) -> AgentResult:
-    """Drive the model→tools→model cycle until it stops — or until the hard cap.
+    """Drive the model->tools->model cycle until it stops — or until the hard cap.
 
     HARD CAP (`max_iterations`): this is the single most important guardrail in
     an agent. Without it, one confused model that keeps calling tools is an
@@ -361,9 +361,7 @@ async def run_agent(
 
         # 2) If the model didn't ask for tools, it's finished. Return.
         if response.stop_reason != "tool_use":
-            final = next(
-                (b["text"] for b in response.content if b["type"] == "text"), ""
-            )
+            final = next((b["text"] for b in response.content if b["type"] == "text"), "")
             log(f"\n── DONE in {iteration} iteration(s) ──")
             return AgentResult(final_text=final, iterations=iteration, trace=trace)
 
@@ -377,7 +375,7 @@ async def run_agent(
             if block["type"] != "tool_use":
                 continue
             name, args, call_id = block["name"], block["input"], block["id"]
-            log(f"  → tool_use: {name}({json.dumps(args)})")
+            log(f"  -> tool_use: {name}({json.dumps(args)})")
 
             tool_obj = REGISTRY.get(name)
             if tool_obj is None:
@@ -405,7 +403,7 @@ async def run_agent(
         messages.append({"role": "user", "content": tool_results})
         log("")
 
-    # Fell out of the loop without stopping → we hit the hard cap.
+    # Fell out of the loop without stopping -> we hit the hard cap.
     log(f"\n── STOPPED: hit max_iterations={max_iterations} (guardrail) ──")
     return AgentResult(
         final_text="(stopped: hit iteration cap before finishing)",

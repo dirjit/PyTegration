@@ -25,9 +25,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # Support running both as a module (`python -m eval_harness.runner`) and as a
 # script (`python eval_harness/runner.py`).
@@ -148,7 +149,8 @@ def run_eval(agent: AgentFn, items: list[GoldenItem]) -> EvalReport:
 # Intentionally imperfect — answers the easy/medium items correctly but is meant
 # to let you SEE the gate working. Replace with your real agent via --agent.
 
-def mock_agent(question: str) -> "str | tuple[str, list[dict[str, Any]]]":
+
+def mock_agent(question: str) -> str | tuple[str, list[dict[str, Any]]]:
     """A canned agent that returns plausible answers + a fake trace where needed."""
     q = question.lower()
     if "capital of france" in q:
@@ -161,7 +163,9 @@ def mock_agent(question: str) -> "str | tuple[str, list[dict[str, Any]]]":
         return "A harness is the system around the model that adds the agent loop, tools, context, memory, and evals."
     if "research what a harness" in q:
         # Returns an answer AND a trace, so the trajectory check can run.
-        answer = "A harness is everything between your code and the model API, saved to findings.md."
+        answer = (
+            "A harness is everything between your code and the model API, saved to findings.md."
+        )
         trace = [
             {"name": "web_search", "input": {"query": "what is a harness"}},
             {"name": "write_file", "input": {"path": "findings.md", "content": "..."}},
@@ -185,8 +189,10 @@ def print_report(report: EvalReport, threshold: float) -> None:
     print()
     for level, (p, t) in sorted(report.by_level().items()):
         print(f"  {level:<6}: {p}/{t} ({p / t:.0%})")
-    print(f"\n  OVERALL: {report.passed}/{report.total} = {report.pass_rate:.1%}"
-          f"  (threshold {threshold:.1%})")
+    print(
+        f"\n  OVERALL: {report.passed}/{report.total} = {report.pass_rate:.1%}"
+        f"  (threshold {threshold:.1%})"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -216,10 +222,12 @@ def main(argv: list[str] | None = None) -> int:
     print_report(report, args.threshold)
 
     # ── THE CI GATE ──────────────────────────────────────────────────────────
-    # Below the absolute threshold → fail the build. ci_gate.md shows the richer
+    # Below the absolute threshold -> fail the build. ci_gate.md shows the richer
     # "regressed 3+ points vs a stored baseline" variant for day-to-day CI.
     if report.pass_rate < args.threshold:
-        print(f"\n❌ GATE FAILED: pass rate {report.pass_rate:.1%} < threshold {args.threshold:.1%}")
+        print(
+            f"\n❌ GATE FAILED: pass rate {report.pass_rate:.1%} < threshold {args.threshold:.1%}"
+        )
         return 1
     print(f"\n✅ GATE PASSED: pass rate {report.pass_rate:.1%} >= threshold {args.threshold:.1%}")
     return 0

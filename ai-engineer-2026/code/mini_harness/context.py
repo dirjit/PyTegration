@@ -20,8 +20,9 @@ in production, count tokens with the provider's tokenizer/endpoint — never
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 # A rough offline token estimate. Real harnesses call the provider's token-count
 # endpoint. ~4 chars/token is a serviceable stand-in for the threshold math.
@@ -42,7 +43,7 @@ class ContextManager:
     """Assembles the prompt and decides when to compact.
 
     `window_tokens` is the model's context window; `compact_at` is the fraction
-    (0–1) at which compaction triggers — 0.85 by default per Lesson 04.
+    (0-1) at which compaction triggers — 0.85 by default per Lesson 04.
     `pinned` holds durable facts/constraints that MUST survive every compaction
     (the war-story fix: pin "must cite sources", "budget $1", etc.).
     """

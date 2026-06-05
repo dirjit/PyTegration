@@ -9,15 +9,16 @@ SKELETON: the spawn boundary and the compressed-summary contract are sketched;
 the student wires it to the real loop and a real summarizer.
 
 COST: isolation is powerful but expensive — sub-agents multiply token usage (often
-~15× for heavy multi-agent setups). The Lesson-04 caveat applies: spawn a
+~15x for heavy multi-agent setups). The Lesson-04 caveat applies: spawn a
 sub-agent only when the value clears that bar, not reflexively. Opus-class models
 tend to under- *and* over-spawn depending on prompting; gate it explicitly.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 
 @dataclass
@@ -56,7 +57,7 @@ async def spawn(
     """Run a sub-agent in an ISOLATED context and return a compressed summary.
 
     The two injected callables are the seams a student fills in:
-      - `run_subloop(...)` drives the model→tools loop with a FRESH message list
+      - `run_subloop(...)` drives the model->tools loop with a FRESH message list
         (a brand-new window — that's the isolation), returning the final messages.
       - `summarize(messages)` compresses that transcript into a short paragraph
         for the parent (COMPRESS applied at the isolation boundary).

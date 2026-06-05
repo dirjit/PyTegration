@@ -15,7 +15,7 @@ and grade its trajectory directly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -23,7 +23,7 @@ from typing import Any
 class TrajectoryResult:
     passed: bool
     reason: str = ""
-    matched: int = 0           # how many expected steps matched in order
+    matched: int = 0  # how many expected steps matched in order
     expected_len: int = 0
 
 
@@ -79,21 +79,29 @@ def check_trajectory(
         # Strict: positions must line up one-to-one.
         for i, want in enumerate(expected_tools):
             if i >= len(actual):
-                return TrajectoryResult(False, f"missing call #{i + 1}: expected {want!r}",
-                                        matched=i, expected_len=expected_len)
+                return TrajectoryResult(
+                    False,
+                    f"missing call #{i + 1}: expected {want!r}",
+                    matched=i,
+                    expected_len=expected_len,
+                )
             if actual[i]["name"] != want:
                 return TrajectoryResult(
                     False,
                     f"call #{i + 1}: expected {want!r}, got {actual[i]['name']!r}",
-                    matched=i, expected_len=expected_len,
+                    matched=i,
+                    expected_len=expected_len,
                 )
             if expected_args and not _args_subset(expected_args[i], actual[i]["input"]):
                 return TrajectoryResult(
-                    False, f"call #{i + 1} ({want!r}): args mismatch",
-                    matched=i, expected_len=expected_len,
+                    False,
+                    f"call #{i + 1} ({want!r}): args mismatch",
+                    matched=i,
+                    expected_len=expected_len,
                 )
-        return TrajectoryResult(True, "trajectory matches (strict)",
-                                matched=expected_len, expected_len=expected_len)
+        return TrajectoryResult(
+            True, "trajectory matches (strict)", matched=expected_len, expected_len=expected_len
+        )
 
     # Subsequence match: expected tools must appear in order, extras allowed.
     ai = 0
@@ -102,19 +110,26 @@ def check_trajectory(
             ai += 1
         if ai >= len(actual):
             return TrajectoryResult(
-                False, f"did not find expected call {want!r} (step {i + 1}) in order",
-                matched=i, expected_len=expected_len,
+                False,
+                f"did not find expected call {want!r} (step {i + 1}) in order",
+                matched=i,
+                expected_len=expected_len,
             )
-        if expected_args and i < len(expected_args) and not _args_subset(
-            expected_args[i], actual[ai]["input"]
+        if (
+            expected_args
+            and i < len(expected_args)
+            and not _args_subset(expected_args[i], actual[ai]["input"])
         ):
             return TrajectoryResult(
-                False, f"call {want!r} (step {i + 1}): args mismatch",
-                matched=i, expected_len=expected_len,
+                False,
+                f"call {want!r} (step {i + 1}): args mismatch",
+                matched=i,
+                expected_len=expected_len,
             )
         ai += 1
-    return TrajectoryResult(True, "trajectory matches (subsequence)",
-                            matched=expected_len, expected_len=expected_len)
+    return TrajectoryResult(
+        True, "trajectory matches (subsequence)", matched=expected_len, expected_len=expected_len
+    )
 
 
 def _args_subset(required: dict[str, Any], actual: dict[str, Any]) -> bool:

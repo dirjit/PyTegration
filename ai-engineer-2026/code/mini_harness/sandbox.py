@@ -42,11 +42,11 @@ class SandboxPolicy:
     that require a real container/subprocess runtime.
     """
 
-    workdir: Path                       # the only directory tools may read/write
-    allow_network: bool = False         # default-deny egress (allow-list in prod)
+    workdir: Path  # the only directory tools may read/write
+    allow_network: bool = False  # default-deny egress (allow-list in prod)
     allowed_hosts: list[str] = field(default_factory=list)
-    cpu_seconds: int | None = None      # wall/CPU limit (enforced by the runtime)
-    memory_mb: int | None = None        # memory cap (enforced by the runtime)
+    cpu_seconds: int | None = None  # wall/CPU limit (enforced by the runtime)
+    memory_mb: int | None = None  # memory cap (enforced by the runtime)
 
 
 def confine_path(policy: SandboxPolicy, relative: str) -> Path:
@@ -109,7 +109,7 @@ class AuthBroker:
 
         # TODO(student): in a real broker this runs in a PROXY the sandbox cannot
         # bypass, so even compromised in-sandbox code can't read `self._secrets`.
-        # Here we just demonstrate the name→secret indirection.
+        # Here we just demonstrate the name->secret indirection.
         """
         if name not in self._secrets:
             raise KeyError(f"no credential registered for {name!r}")

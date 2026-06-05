@@ -103,8 +103,7 @@ class Checkpointer:
         payload = json.dumps(messages)
         with self._conn:  # transaction: both writes commit together or not at all
             self._conn.execute(
-                "UPDATE runs SET iteration=?, messages=?, status=?, updated_at=?"
-                " WHERE run_id=?",
+                "UPDATE runs SET iteration=?, messages=?, status=?, updated_at=? WHERE run_id=?",
                 (iteration, payload, status, now, run_id),
             )
             self._conn.execute(
@@ -121,8 +120,7 @@ class Checkpointer:
         back to the loop and it picks up where it left off.
         """
         row = self._conn.execute(
-            "SELECT run_id, iteration, messages, status, updated_at FROM runs"
-            " WHERE run_id=?",
+            "SELECT run_id, iteration, messages, status, updated_at FROM runs WHERE run_id=?",
             (run_id,),
         ).fetchone()
         if row is None:
