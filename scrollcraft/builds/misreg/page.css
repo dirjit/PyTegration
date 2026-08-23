@@ -1,0 +1,467 @@
+/* ===========================================================================
+   MISREG · Misregister Press
+   Grammar: rhythmic cutlist. Grounds are painted per section and cut hard.
+   No drift: several short acts are part-way through at once, so an
+   interpolated ground would arrive late (devices.md §10).
+   ========================================================================= */
+
+/* Self-hosted so the page has no third-party dependency and renders the same
+   offline. Variable Space Grotesk covers 400/500/700 from one file. */
+@font-face {
+  font-family: "Archivo Black";
+  font-style: normal; font-weight: 400; font-display: swap;
+  src: url("fonts/archivo-black.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal; font-weight: 300 700; font-display: swap;
+  src: url("fonts/space-grotesk.woff2") format("woff2");
+}
+
+:root {
+  /* Ink. These are the studio's two drums plus the yellow that only shows up
+     inside artwork. They are subject matter, not UI accent. */
+  --mr-fluoro:  #ff48b0;
+  --mr-blue:    #005b92;
+  --mr-yellow:  #ffe800;
+  --mr-purple:  #5b2c87;
+  --mr-black:   #1a1a1e;
+  --mr-paper:   #f2ede3;
+
+  /* Six roles. Defaults are the dark ground. */
+  --sc-canvas:     #1a1a1e;
+  --sc-surface:    #24242a;
+  --sc-ink:        #f2ede3;
+  --sc-ink-soft:   #a79fa8;
+  --sc-accent:     #ff6bc0;
+  --sc-accent-ink: #1a1a1e;
+
+  --sc-font-display: "Archivo Black", "Archivo", system-ui, sans-serif;
+  --sc-font-text:    "Space Grotesk", system-ui, sans-serif;
+
+  --sc-r-sm: 0px; --sc-r-md: 0px; --sc-r-lg: 0px; --sc-r-pill: 0px;
+
+  --mr-bar-h: clamp(52px, 7vh, 68px);
+}
+
+/* --- grounds. Every one restates `color`, because a redefined --sc-ink does
+       not re-ink text whose color already resolved on <body> (taste.md). ---- */
+.g-black  { background: var(--mr-black);  --sc-ink: #f2ede3; --sc-ink-soft: #a79fa8; --sc-accent: #ff6bc0; color: var(--sc-ink); }
+.g-paper  { background: var(--mr-paper);  --sc-ink: #1a1a1e; --sc-ink-soft: #5e5560; --sc-accent: #c4006e; color: var(--sc-ink); }
+.g-fluoro { background: var(--mr-fluoro); --sc-ink: #1a1a1e; --sc-ink-soft: #5c1541; --sc-accent: #1a1a1e; color: var(--sc-ink); }
+.g-blue   { background: var(--mr-blue);   --sc-ink: #f2ede3; --sc-ink-soft: #d4e6f2; --sc-accent: #ffc4e4; color: var(--sc-ink); }
+.g-purple { background: var(--mr-purple); --sc-ink: #f2ede3; --sc-ink-soft: #cdb6dd; --sc-accent: #ff9ad4; color: var(--sc-ink); }
+
+body { background: var(--mr-black); font-family: var(--sc-font-text); }
+
+/* --- the cut. Each act is a short opaque band; the boundary is the edit. --- */
+.cut {
+  position: relative;
+  min-height: var(--mr-h, 80vh);
+  display: grid;
+  align-content: center;
+  padding: clamp(3rem, 7vh, 5.5rem) var(--sc-gutter);
+  overflow: clip;
+}
+.cut > * { position: relative; z-index: 1; }
+
+.wrap { width: 100%; max-width: var(--sc-maxw); margin-inline: auto; }
+.measure { max-width: 46ch; }
+
+/* --- type ---------------------------------------------------------------- */
+.d-xl, .d-lg, .d-md {
+  font-family: var(--sc-font-display);
+  font-weight: 400;
+  line-height: 0.92;
+  letter-spacing: var(--sc-track-tight);
+  text-transform: uppercase;
+  text-wrap: balance;
+  margin: 0;
+}
+.d-xl { font-size: clamp(3rem, 11vw, 8.5rem); }
+.d-lg { font-size: clamp(2.2rem, 6.4vw, 4.6rem); }
+.d-md { font-size: clamp(1.5rem, 3.4vw, 2.4rem); line-height: 1.0; }
+
+.body {
+  font-size: var(--sc-t-base);
+  line-height: var(--sc-leading-body);
+  color: var(--sc-ink-soft);
+  max-width: var(--sc-measure);
+  text-wrap: pretty;
+  margin: 0;
+}
+.lede {
+  font-size: var(--sc-t-lg);
+  line-height: 1.34;
+  text-wrap: pretty;
+  margin: 0;
+  max-width: 34ch;
+}
+.label {
+  font-size: var(--sc-t-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--sc-accent);
+  margin: 0;
+}
+.stack > * + * { margin-top: var(--sc-5); }
+.stack--tight > * + * { margin-top: var(--sc-3); }
+/* More space above a heading than below it. */
+.stack > .d-lg, .stack > .d-md { margin-top: var(--sc-7); }
+.stack > .d-lg:first-child, .stack > .d-md:first-child { margin-top: 0; }
+
+/* ===========================================================================
+   THE SIGNATURE MOVE: the registration lock.
+   Three ink plates of the wordmark live in the fixed chrome. Their offsets are
+   driven by page scroll and scroll velocity, so the mark is visibly out of
+   register the whole way down. Approaching act 12 the spread collapses, the
+   plates lock true, and hold. Past it they break apart again.
+   Bespoke, page-local, driven off --reg-*. The engine is untouched.
+   ========================================================================= */
+.press-bar {
+  position: fixed; inset: 0 0 auto 0; z-index: 40;
+  height: var(--mr-bar-h);
+  display: flex; align-items: center; gap: var(--sc-4);
+  padding-inline: var(--sc-gutter);
+  background: var(--mr-black);
+  border-bottom: 2px solid var(--mr-fluoro);
+}
+.reg {
+  position: relative;
+  flex: 0 0 auto;
+  isolation: isolate;
+  line-height: 1;
+}
+/* The measuring copy: transparent, holds the box so the plates can be absolute. */
+.reg__slug { visibility: hidden; }
+.reg__slug, .reg__plate {
+  font-family: var(--sc-font-display);
+  font-size: clamp(1.05rem, 2.5vw, 1.6rem);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.reg__plate {
+  position: absolute; inset: 0;
+  mix-blend-mode: screen;
+  will-change: transform;
+  transform: translate3d(
+    calc(var(--px, 0) * var(--reg-spread, 0px)),
+    calc(var(--py, 0) * var(--reg-spread, 0px)), 0);
+}
+.reg__plate--pink   { color: var(--mr-fluoro); --px:  1;    --py: -0.55; }
+.reg__plate--blue   { color: #2ea6ff;          --px: -0.9;  --py:  0.7;  }
+.reg__plate--yellow { color: var(--mr-yellow); --px:  0.15; --py:  1;    }
+
+/* The lock. A held beat: the plates sit true and the bar acknowledges it. */
+.press-bar.is-locked { border-bottom-color: var(--mr-yellow); }
+.reg__lockline {
+  position: absolute; left: 0; right: 0; bottom: -6px; height: 2px;
+  background: var(--mr-yellow);
+  transform: scaleX(var(--reg-lock, 0));
+  transform-origin: left center;
+  opacity: var(--reg-lock, 0);
+}
+
+.bar__spacer { flex: 1 1 auto; }
+.bar__note {
+  font-size: var(--sc-t-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a79fa8;
+  display: none;
+}
+@media (min-width: 760px) { .bar__note { display: block; } }
+
+.bar__cta {
+  font-family: var(--sc-font-display);
+  font-size: clamp(0.8rem, 1.8vw, 1rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--mr-fluoro);
+  color: var(--mr-black);
+  text-decoration: none;
+  padding: 0.6em 1em;
+  border: 2px solid var(--mr-fluoro);
+  transition: background var(--sc-d-fast) var(--sc-ease-out),
+              color var(--sc-d-fast) var(--sc-ease-out),
+              transform 120ms var(--sc-ease-out);
+}
+.bar__cta:hover { background: transparent; color: var(--mr-fluoro); }
+.bar__cta:active { transform: translateY(1px); }
+
+main { padding-top: var(--mr-bar-h); }
+
+/* --- halftone. A real dot screen, angled per ink, the way a plate is. ----- */
+/* Overscanned hard: a rotated box has to be far larger than its parent to
+   still cover the corners. The section clips it. */
+.tone {
+  position: absolute; inset: -60%;
+  background-image: radial-gradient(circle at center, currentColor 30%, transparent 32%);
+  background-size: var(--tone-size, 9px) var(--tone-size, 9px);
+  opacity: var(--tone-a, 0.5);
+  transform: rotate(var(--tone-rot, 15deg));
+  pointer-events: none;
+}
+
+/* --- the ink stack: three overlapping screens, act 2 and act 5 ------------ */
+.stackfig {
+  position: relative;
+  aspect-ratio: 16 / 7;
+  width: 100%;
+  isolation: isolate;
+  background: var(--mr-paper);
+  /* The ink stays on the sheet. Without this the rotated screens throw their
+     corners across the whole section and pass under the copy, which is a
+     measured contrast failure, not a stylistic one. */
+  overflow: clip;
+}
+.stackfig__ink {
+  position: absolute; inset: 0;
+  mix-blend-mode: multiply;
+}
+/* Oversized so a rotated square still covers the clipped sheet corner to corner. */
+.stackfig__ink i {
+  position: absolute; inset: -45%; display: block;
+  background-image: radial-gradient(circle at center, currentColor 34%, transparent 36%);
+  background-size: 11px 11px;
+  transform: rotate(var(--rot, 0deg)) translate(var(--dx, 0), var(--dy, 0));
+}
+.ink--pink   { color: var(--mr-fluoro); }
+.ink--blue   { color: #0078bf; }
+.ink--yellow { color: var(--mr-yellow); }
+
+/* Act 5 drives the second pull laying down from the act's own --sc-p. */
+.pull { --lay: clamp(0, calc((var(--sc-p, 0) - 0.15) * 2.2), 1); }
+.pull .stackfig__ink--second {
+  opacity: var(--lay);
+  transform: translateX(calc((1 - var(--lay)) * -14%));
+}
+
+/* --- act 5: copy beside a portrait sheet --------------------------------- */
+.pullrow { display: grid; gap: var(--sc-6); align-items: center; }
+@media (min-width: 900px) { .pullrow { grid-template-columns: 1fr 0.78fr; gap: var(--sc-8); } }
+.sheet-portrait {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  width: 100%;
+  max-width: 22rem;
+  justify-self: end;
+  background: var(--mr-paper);
+  isolation: isolate;
+  overflow: clip;
+  box-shadow: 0 3px 6px hsl(210 60% 3% / 0.3), 0 22px 48px -14px hsl(210 60% 3% / 0.5);
+}
+@media (max-width: 899px) { .sheet-portrait { justify-self: start; max-width: 15rem; } }
+
+/* --- act 7: the diptych, meeting on a hard edge -------------------------- */
+.diptych { display: grid; grid-template-columns: 1fr 1fr; }
+.diptych__half {
+  position: relative;
+  min-height: clamp(13rem, 30vh, 20rem);
+  display: grid; align-content: end;
+  padding: var(--sc-5);
+  overflow: clip;
+  transform-style: preserve-3d;
+}
+.diptych__body { position: relative; z-index: 1; }
+
+/* --- specimen chips ------------------------------------------------------ */
+.chips {
+  display: grid;
+  gap: var(--sc-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+}
+.chip { position: relative; overflow: clip; }
+.chip__swatch {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: clip;
+  border: 2px solid currentColor;
+}
+.chip__body { padding-top: var(--sc-3); }
+.chip__name {
+  font-family: var(--sc-font-display);
+  font-size: var(--sc-t-lg);
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1;
+}
+.chip__spec {
+  font-size: var(--sc-t-sm);
+  color: var(--sc-ink-soft);
+  margin: var(--sc-2) 0 0;
+  letter-spacing: 0.02em;
+}
+
+/* --- the faults list ----------------------------------------------------- */
+.faults { list-style: none; margin: 0; padding: 0; }
+.faults li {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 12rem) 1fr;
+  gap: var(--sc-4);
+  padding: var(--sc-4) 0;
+  border-top: 2px solid currentColor;
+  align-items: baseline;
+}
+.faults li:last-child { border-bottom: 2px solid currentColor; }
+.faults dt, .faults .f-name {
+  font-family: var(--sc-font-display);
+  text-transform: uppercase;
+  font-size: var(--sc-t-lg);
+  line-height: 1;
+}
+.faults .f-desc { color: var(--sc-ink-soft); font-size: var(--sc-t-base); line-height: 1.5; margin: 0; }
+
+/* --- act 9: the enlarged fault ------------------------------------------- */
+.blowup { position: relative; aspect-ratio: 21 / 9; width: 100%; overflow: clip; background: var(--mr-black); }
+.blowup__mark {
+  position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(92deg,
+      transparent 0 22px,
+      color-mix(in oklab, var(--mr-fluoro) 70%, transparent) 22px 26px,
+      transparent 26px 48px);
+  opacity: 0.9;
+}
+.blowup__ghost {
+  position: absolute; inset: 0;
+  background: radial-gradient(60% 90% at 30% 50%, color-mix(in oklab, #2ea6ff 55%, transparent), transparent 70%);
+  mix-blend-mode: screen;
+}
+
+/* --- act 11: the authored silence ---------------------------------------- */
+.silence { min-height: 85vh; }
+
+/* --- act 12: THE PEAK. The registered poster. ---------------------------- */
+.peak { min-height: 140vh; display: grid; place-items: center; }
+/* Sized from the viewport HEIGHT, not the width. The payoff has to be wholly
+   on screen at the moment it locks; a poster taller than the viewport can
+   never be seen registered. */
+.poster {
+  position: relative;
+  height: min(74vh, 40rem);
+  aspect-ratio: 3 / 4;
+  width: auto;
+  max-width: min(100%, 44rem);
+  background: var(--mr-paper);
+  isolation: isolate;
+  box-shadow: 0 4px 8px hsl(280 40% 2% / 0.3), 0 30px 70px -18px hsl(280 40% 2% / 0.55);
+}
+.poster__ink {
+  position: absolute; inset: 0;
+  mix-blend-mode: multiply;
+  display: grid; place-items: center;
+  padding-inline: clamp(1rem, 4%, 2.5rem);
+  /* Registration: driven by the same --reg-spread as the chrome, so the poster
+     and the wordmark lock in the same instant. */
+  transform: translate3d(
+    calc(var(--px, 0) * var(--reg-spread, 0px) * 1.7),
+    calc(var(--py, 0) * var(--reg-spread, 0px) * 1.7), 0);
+}
+.poster__ink--pink   { --px:  1;   --py: -0.55; }
+.poster__ink--blue   { --px: -0.9; --py:  0.7;  }
+.poster__ink--yellow { --px: 0.15; --py:  1;    }
+/* Scaled from viewport HEIGHT, because the sheet is height-sized. Driving this
+   off vw overflows the sheet on a wide short window. */
+.poster__word {
+  font-family: var(--sc-font-display);
+  font-size: clamp(2rem, 8.4vh, 4.6rem);
+  line-height: 0.86;
+  text-transform: uppercase;
+  letter-spacing: -0.04em;
+  text-align: center;
+  margin: 0;
+}
+.poster__cap {
+  position: absolute; left: 0; right: 0; bottom: 6%;
+  text-align: center;
+  font-size: var(--sc-t-xs);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mr-black);
+  opacity: var(--reg-lock, 0);
+  mix-blend-mode: normal;
+}
+
+/* --- act 13: the job spec ------------------------------------------------ */
+.spec { display: grid; gap: 0; margin: 0; }
+.spec div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 14rem) 1fr;
+  gap: var(--sc-4);
+  padding: var(--sc-3) 0;
+  border-top: 1px solid color-mix(in oklab, currentColor 25%, transparent);
+}
+.spec dt { font-size: var(--sc-t-xs); letter-spacing: 0.14em; text-transform: uppercase; color: var(--sc-ink-soft); }
+.spec dd { margin: 0; font-size: var(--sc-t-base); }
+
+/* --- act 14: the close. Abrupt, full bleed, no spotlight, no magnet. ----- */
+.close { min-height: 100vh; align-content: center; }
+.close__cta {
+  display: inline-block;
+  font-family: var(--sc-font-display);
+  font-size: clamp(1.1rem, 3.2vw, 1.8rem);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--mr-black);
+  color: var(--mr-fluoro);
+  text-decoration: none;
+  padding: 0.7em 1.3em;
+  border: 3px solid var(--mr-black);
+  transition: background var(--sc-d-fast) var(--sc-ease-out),
+              color var(--sc-d-fast) var(--sc-ease-out),
+              transform 120ms var(--sc-ease-out);
+}
+.close__cta:hover { background: transparent; color: var(--mr-black); }
+.close__cta:active { transform: translateY(1px); }
+.foot {
+  margin-top: var(--sc-9);
+  display: flex; flex-wrap: wrap; gap: var(--sc-4) var(--sc-6);
+  align-items: baseline;
+  font-size: var(--sc-t-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.foot a { color: inherit; text-underline-offset: 3px; }
+
+/* --- focus, selection, browser surfaces ---------------------------------- */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 3px solid var(--sc-accent);
+  outline-offset: 3px;
+}
+::selection { background: var(--mr-fluoro); color: var(--mr-black); }
+
+/* Utilities the engine stylesheet does not ship. */
+.sc-sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.sc-skip {
+  position: fixed; top: 0; left: 0; z-index: 60;
+  transform: translateY(-120%);
+  background: var(--mr-yellow); color: var(--mr-black);
+  font-family: var(--sc-font-display); text-transform: uppercase;
+  font-size: var(--sc-t-sm); letter-spacing: 0.06em;
+  padding: 0.7em 1.1em; text-decoration: none;
+  transition: transform var(--sc-d-fast) var(--sc-ease-out);
+}
+.sc-skip:focus-visible { transform: translateY(0); }
+
+/* --- the phone. Step the hero down a rung (taste.md). -------------------- */
+@media (max-width: 700px) {
+  .d-xl { font-size: clamp(2.4rem, 12vw, 3.4rem); }
+  .faults li { grid-template-columns: 1fr; gap: var(--sc-2); }
+  .spec div { grid-template-columns: 1fr; gap: var(--sc-1); }
+  .peak { min-height: 110vh; }
+}
+
+/* --- reduced motion: fewer and gentler, not zero. The registration lock
+       still happens, because it carries the page's meaning. Only the
+       velocity jitter goes. ------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .reg__plate, .poster__ink { transition: none; }
+  .tone { transform: none; }
+}
