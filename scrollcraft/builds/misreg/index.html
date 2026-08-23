@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MISREG · a two drum risograph studio</title>
+<meta name="description" content="Misregister Press. Two drums, flat spot colour, halftone, and the misregistration kept rather than corrected.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%231a1a1e'/><rect x='6' y='7' width='14' height='14' fill='%23ff48b0'/><rect x='12' y='11' width='14' height='14' fill='%232ea6ff' style='mix-blend-mode:screen'/></svg>">
+<link rel="stylesheet" href="scrollcraft.css">
+<link rel="stylesheet" href="page.css">
+</head>
+<body>
+
+<span data-sc-progress></span>
+<div class="sc-grain" aria-hidden="true"></div>
+
+<a class="sc-skip" href="#top">Skip to content</a>
+
+<!-- The chrome. Loud, full width, CTA at the same weight as the wordmark,
+     which is what the rhythmic cutlist grammar asks for. It also carries the
+     signature move: two ink plates that stay out of register the whole way
+     down and lock exactly once. -->
+<header class="press-bar" id="pressbar">
+  <span class="reg" id="reg" aria-label="MISREG">
+    <span class="reg__slug" aria-hidden="true">MISREG</span>
+    <span class="reg__plate reg__plate--blue" aria-hidden="true">MISREG</span>
+    <span class="reg__plate reg__plate--pink" aria-hidden="true">MISREG</span>
+    <span class="reg__lockline" aria-hidden="true"></span>
+  </span>
+  <span class="bar__spacer"></span>
+  <span class="bar__note" id="barnote">Out of register</span>
+  <a class="bar__cta" href="#send">Send a job</a>
+</header>
+
+<main id="top">
+
+  <!-- 1 · JOLT ---------------------------------------------------------- -->
+  <section class="cut g-fluoro" data-sc-act="flow" style="--mr-h:90vh">
+    <span class="tone" aria-hidden="true" style="--tone-a:0.11;--tone-rot:75deg;--tone-size:12px;color:#1a1a1e"></span>
+    <div class="wrap stack">
+      <h1 class="d-xl" data-sc-cue="0 1 0 0" data-sc-kinetic="lines">Printed wrong on purpose.</h1>
+      <p class="lede" data-sc-cue="0.02 1 0.1 0">A two drum risograph studio. We keep the slip, the roller marks and the ghosting.</p>
+    </div>
+  </section>
+
+  <!-- 2 · JOLT, second cut. reveal ------------------------------------- -->
+  <section class="cut g-black" data-sc-act="flow" style="--mr-h:78vh">
+    <div class="wrap">
+      <div data-sc-reveal="left" data-sc-reveal-at="0.1 0.5">
+        <div class="stackfig">
+          <span class="stackfig__ink" aria-hidden="true"><i class="ink--blue" style="--rot:52deg;--dx:-1.1%;--dy:0.9%"></i></span>
+          <span class="stackfig__ink" aria-hidden="true"><i class="ink--pink" style="--rot:26deg;--dx:0.6%;--dy:1.2%"></i></span>
+        </div>
+      </div>
+      <p class="label" style="margin-top:var(--sc-4)" data-sc-cue="0.3 1 0.2 0">Two pulls. One sheet.</p>
+    </div>
+  </section>
+
+  <!-- 3 · RECOGNITION. flow + in ---------------------------------------- -->
+  <section class="cut g-paper" data-sc-act="flow" style="--mr-h:84vh">
+    <div class="wrap stack" data-sc-in data-sc-stagger="60">
+      <h2 class="d-lg">We own two drums.</h2>
+      <p class="body">That is the whole studio. Fluorescent pink and process blue. Everything on this page is those two inks pulled in a different order, at a different screen angle, on a different paper.</p>
+    </div>
+  </section>
+
+  <!-- 4 · RECOGNITION, second cut. reveal -------------------------------- -->
+  <section class="cut g-paper" data-sc-act="flow" style="--mr-h:76vh">
+    <div class="wrap">
+      <div data-sc-reveal="up" data-sc-reveal-at="0.12 0.52">
+        <div class="chips">
+          <article class="chip">
+            <div class="chip__swatch" style="color:#1a1a1e;background:var(--mr-fluoro)">
+              <span class="tone" aria-hidden="true" style="--tone-a:0.3;--tone-rot:26deg;color:#1a1a1e"></span>
+            </div>
+            <div class="chip__body">
+              <h3 class="chip__name">Fluorescent Pink</h3>
+              <p class="chip__spec">Drum one. 26 degree screen.</p>
+            </div>
+          </article>
+          <article class="chip">
+            <div class="chip__swatch" style="color:#f2ede3;background:#0078bf">
+              <span class="tone" aria-hidden="true" style="--tone-a:0.3;--tone-rot:52deg;color:#f2ede3"></span>
+            </div>
+            <div class="chip__body">
+              <h3 class="chip__name">Process Blue</h3>
+              <p class="chip__spec">Drum two. 52 degree screen.</p>
+            </div>
+          </article>
+          <article class="chip">
+            <div class="chip__swatch" style="color:#f2ede3;background:var(--mr-purple)">
+              <span class="tone" aria-hidden="true" style="--tone-a:0.26;--tone-rot:15deg;color:#f2ede3"></span>
+            </div>
+            <div class="chip__body">
+              <h3 class="chip__name">The overlap</h3>
+              <p class="chip__spec">No drum. Only where the two land together.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · GREED. The second pull lays down from the act's own --sc-p. ---- -->
+  <section class="cut g-blue pull" data-sc-act="flow" style="--mr-h:88vh">
+    <div class="wrap pullrow">
+      <div class="stack">
+        <p class="label" data-sc-cue="0.04 1 0.12 0">The second pull</p>
+        <p class="lede" data-sc-cue="0.14 1 0.14 0">Blue goes down first and dries. Then the sheet goes back in and pink is pulled over the top of it.</p>
+        <p class="body" data-sc-cue="0.24 1 0.16 0">The purple is what happens in between. Scroll and you are running the second drum.</p>
+      </div>
+      <!-- Portrait sheet, deliberately not the wide band from the second cut:
+           two acts that share a shape read as one act shown twice. -->
+      <div class="sheet-portrait" aria-hidden="true">
+        <span class="stackfig__ink"><i class="ink--blue" style="--rot:52deg"></i></span>
+        <span class="stackfig__ink stackfig__ink--second"><i class="ink--pink" style="--rot:26deg"></i></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · GREED, second cut. reveal ------------------------------------- -->
+  <section class="cut g-black" data-sc-act="flow" style="--mr-h:74vh">
+    <div class="wrap">
+      <div data-sc-reveal="right" data-sc-reveal-at="0.1 0.5">
+        <h2 class="d-lg measure">The purple is not a colour we chose. It is a colour that happens.</h2>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · GREED, third cut. pointer ------------------------------------- -->
+  <section class="cut g-purple" data-sc-act="flow" style="--mr-h:80vh">
+    <div class="wrap stack">
+      <h2 class="d-md" data-sc-cue="0.04 1 0.12 0">Pulled in the other order</h2>
+      <!-- A diptych meeting on a hard edge, not a second row of bordered
+           chips: the specimen row already used that shape three cuts ago. -->
+      <div class="diptych" style="margin-top:var(--sc-5)">
+        <div class="diptych__half" data-sc-tilt="5" style="background:#3d2a6b">
+          <span class="tone" aria-hidden="true" style="--tone-a:0.38;--tone-rot:26deg;color:var(--mr-fluoro)"></span>
+          <div class="diptych__body">
+            <h3 class="chip__name">Pink last</h3>
+            <p class="chip__spec">Sits on top. Reads hot.</p>
+          </div>
+        </div>
+        <div class="diptych__half" data-sc-tilt="5" style="background:#4a2378">
+          <span class="tone" aria-hidden="true" style="--tone-a:0.38;--tone-rot:52deg;color:#2ea6ff"></span>
+          <div class="diptych__body">
+            <h3 class="chip__name">Blue last</h3>
+            <p class="chip__spec">Sits on top. Reads cold.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · AFFECTION. flow + in ------------------------------------------ -->
+  <section class="cut g-paper" data-sc-act="flow" style="--mr-h:88vh">
+    <div class="wrap stack" data-sc-in data-sc-stagger="55">
+      <h2 class="d-lg">The faults we keep.</h2>
+      <ul class="faults">
+        <li><span class="f-name">Slip</span><p class="f-desc">The sheet moves under the drum. The second colour lands a millimetre off the first.</p></li>
+        <li><span class="f-name">Roller</span><p class="f-desc">Bands of ink pulled along the sheet where the roller carried too much.</p></li>
+        <li><span class="f-name">Ghosting</span><p class="f-desc">A pale second impression of a heavy area, printed further down the same sheet.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 9 · AFFECTION, second cut. reveal iris. The only iris on the page. - -->
+  <section class="cut g-black" data-sc-act="flow" style="--mr-h:82vh">
+    <div class="wrap">
+      <div data-sc-reveal="iris" data-sc-reveal-at="0.1 0.5">
+        <div class="blowup">
+          <span class="blowup__ghost" aria-hidden="true"></span>
+          <span class="blowup__mark" aria-hidden="true"></span>
+        </div>
+      </div>
+      <p class="label" style="margin-top:var(--sc-4)" data-sc-cue="0.32 1 0.2 0">Roller marks, enlarged</p>
+    </div>
+  </section>
+
+  <!-- 10 · AFFECTION, third cut. kinetic, and the one line on the page that
+       says "you". It sits at the turn, immediately before the silence. -->
+  <section class="cut g-paper" data-sc-act="flow" style="--mr-h:78vh">
+    <div class="wrap">
+      <h2 class="d-lg measure" data-sc-cue="0.04 1 0.14 0" data-sc-kinetic="lines">A digital press would reject every sheet on this page. That is what you are paying for.</h2>
+    </div>
+  </section>
+
+  <!-- 11 · SILENCE. Authored empty. Declared in BRIEF.md so the
+         verification pass can tell it from dead scroll. ------------------ -->
+  <section class="cut g-black silence" data-sc-act="flow" aria-hidden="true"></section>
+
+  <!-- 12 · THE PEAK. The plates lock. The grammar bans pin and dwell, so the
+         hold lives in the fixed chrome, which belongs to no act. --------- -->
+  <section class="cut g-black peak" id="peak" data-sc-act="flow">
+    <div class="poster">
+      <span class="poster__ink poster__ink--blue" aria-hidden="true">
+        <span class="poster__word" style="color:#0078bf">In<br>register</span>
+      </span>
+      <span class="poster__ink poster__ink--pink" aria-hidden="true">
+        <span class="poster__word" style="color:var(--mr-fluoro)">In<br>register</span>
+      </span>
+      <h2 class="sc-sr-only">In register</h2>
+      <p class="poster__cap">Held for one sheet</p>
+    </div>
+  </section>
+
+  <!-- 13 · DECISION. Administrative, so it is compressed. ---------------- -->
+  <section class="cut g-paper" data-sc-act="flow" style="--mr-h:86vh">
+    <div class="wrap stack" data-sc-in data-sc-stagger="45">
+      <h2 class="d-lg">Send us a job.</h2>
+      <dl class="spec">
+        <div><dt>Paper</dt><dd>Sugar paper, newsprint, or 250gsm cartridge.</dd></div>
+        <div><dt>Sizes</dt><dd>A3 and A2. Anything larger is two sheets and a fold.</dd></div>
+        <div><dt>Artwork</dt><dd>One greyscale layer per drum, at 300ppi, named for its ink.</dd></div>
+        <div><dt>Registration</dt><dd>Assume it will be off. Design so that it reads either way.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 14 · THE CLOSE. Abrupt, full bleed, no spotlight, no magnet, no
+         drift down. Cues hold so the last screen is never empty. -------- -->
+  <section class="cut g-fluoro close" id="send" data-sc-act="flow">
+    <span class="tone" aria-hidden="true" style="--tone-a:0.11;--tone-rot:26deg;--tone-size:14px;color:#1a1a1e"></span>
+    <div class="wrap stack">
+      <h2 class="d-lg" data-sc-cue="0 1 0 0" data-sc-kinetic="lines">Bring us something that can go wrong.</h2>
+      <p><a class="close__cta" href="mailto:press@misreg.example" data-sc-cue="0 1 0 0" data-sc-rise="0">Send a job</a></p>
+      <footer class="foot">
+        <span>MISREG · Misregister Press</span>
+        <a href="mailto:press@misreg.example">press@misreg.example</a>
+        <span>A sample build. MISREG is not a real studio.</span>
+      </footer>
+    </div>
+  </section>
+
+</main>
+
+<script src="scrollcraft.js"></script>
+<script>
+ScrollCraft.mount(document.body);
+
+/* ===========================================================================
+   THE SIGNATURE MOVE. Page-local, engine untouched.
+
+   The three ink plates are out of register the whole way down. Spread is
+   driven by two things: a slow drift keyed to page position, and scroll
+   velocity, so the mark separates when the visitor moves fast and settles
+   when they stop. Across act 12 the spread collapses to zero, the plates lock
+   true, and the lockline draws. Past it they break apart again, because that
+   is what a real press does.
+   ========================================================================= */
+(function () {
+  var bar   = document.getElementById('pressbar');
+  var peak  = document.getElementById('peak');
+  var note  = document.getElementById('barnote');
+  var root  = document.documentElement;
+  if (!bar || !peak) return;
+
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  var lastY = scrollY, vel = 0, spread = 6, lock = 0, locked = false, raf = 0;
+
+  function frame() {
+    raf = 0;
+    var y = scrollY;
+    var dy = Math.abs(y - lastY);
+    lastY = y;
+
+    /* Velocity, smoothed. Fast scrolling drives the plates apart. */
+    vel += (Math.min(dy, 40) - vel) * 0.12;
+
+    /* The peak's progress through the viewport, 0 as it enters to 1 as it
+       leaves. The lock is a trapezoid over that, not a point: it ramps in,
+       HOLDS across the middle, then ramps out. The hold is the whole reason
+       this works. A lock computed as distance-to-a-point is a blink, and the
+       peak is supposed to be the moment with the most room on the page. */
+    var r = peak.getBoundingClientRect();
+    var vh = innerHeight;
+    var q = (vh - r.top) / (vh + r.height);
+    var lockT =
+      q <= 0.36 ? 0 :
+      q <  0.46 ? (q - 0.36) / 0.10 :
+      q <= 0.56 ? 1 :
+      q <  0.66 ? 1 - (q - 0.56) / 0.10 : 0;
+
+    var base = reduce.matches ? 5 : 3.5 + vel * 0.26;
+    var target = base * (1 - lockT);
+
+    spread += (target - spread) * (reduce.matches ? 1 : 0.16);
+    lock   += (lockT - lock) * (reduce.matches ? 1 : 0.2);
+
+    root.style.setProperty('--reg-spread', spread.toFixed(2) + 'px');
+    root.style.setProperty('--reg-lock', lock.toFixed(3));
+
+    var isLocked = lock > 0.72;
+    if (isLocked !== locked) {
+      locked = isLocked;
+      bar.classList.toggle('is-locked', locked);
+      if (note) note.textContent = locked ? 'In register' : 'Out of register';
+    }
+
+    /* Keep the loop alive only while something is still moving. A rAF that
+       never yields costs battery for a page that is standing still. */
+    var settling = Math.abs(target - spread) > 0.05 ||
+                   Math.abs(lockT - lock) > 0.004 || vel > 0.4;
+    if (settling) tick();
+  }
+
+  function tick() { if (!raf) raf = requestAnimationFrame(frame); }
+
+  addEventListener('scroll', tick, { passive: true });
+  addEventListener('resize', tick, { passive: true });
+  tick();
+})();
+</script>
+</body>
+</html>
