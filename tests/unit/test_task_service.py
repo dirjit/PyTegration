@@ -62,6 +62,7 @@ async def test_list_filters_by_status_and_reports_total(task_service: TaskServic
 
     everything, total = await task_service.list_tasks()
     assert total == 2
+    assert len(everything) == 2
 
 
 async def test_delete_removes_the_task(task_service: TaskService) -> None:

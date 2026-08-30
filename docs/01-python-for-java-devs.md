@@ -58,10 +58,12 @@ explicitly (e.g. `TaskRead.model_validate(orm_obj)` in the service layer).
 ## Enums
 
 ```python
-class TaskStatus(str, Enum):   # a Java enum, but each member is also a string
+class TaskStatus(StrEnum):   # a Java enum, but each member is also a string
     TODO = "todo"
 ```
-See [`domain/enums.py`](../src/pytegration/domain/enums.py). The `str` mixin makes
-JSON/DB serialization automatic.
+See [`domain/enums.py`](../src/pytegration/domain/enums.py). `StrEnum` (Python
+3.11+) makes each member a real `str`, so JSON/DB serialization is automatic. It
+replaces the older `class TaskStatus(str, Enum)` idiom — and, unlike it,
+`str(TaskStatus.TODO)` is `"todo"` rather than `"TaskStatus.TODO"`.
 
 ➡️ Next: [Module 2 — Async & Await](02-async-await.md)
