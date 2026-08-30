@@ -6,15 +6,17 @@ LAYER:  domain
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Lifecycle state of a task.
 
-    SYNTAX TIP: a `str`-mixed Enum serializes to its value (`"todo"`) in JSON and
-        the database automatically, while still giving you typed constants in
-        code. This is the idiomatic way to model a closed set of choices.
+    SYNTAX TIP: `StrEnum` (Python 3.11+) is a `str`-valued Enum: each member IS a
+        real string, so it serializes to its value (`"todo"`) in JSON and the
+        database automatically while still giving you typed constants in code.
+        It replaces the older `class TaskStatus(str, Enum)` idiom and, unlike it,
+        makes `str(TaskStatus.TODO) == "todo"` (not `"TaskStatus.TODO"`).
     JAVA NOTE: equivalent to a Java `enum TaskStatus { TODO, IN_PROGRESS, DONE }`,
         but the string values make persistence and API responses human-readable.
     """
@@ -24,7 +26,7 @@ class TaskStatus(str, Enum):
     DONE = "done"
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     """How urgent a task is.
 
     WHY model priority as an enum and not a free-form string? It makes invalid

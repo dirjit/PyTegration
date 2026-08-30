@@ -22,19 +22,20 @@ WHY validate config at startup?
 from __future__ import annotations
 
 import functools
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AppEnv(str, Enum):
+class AppEnv(StrEnum):
     """Deployment environment.
 
-    SYNTAX TIP: subclassing `str` AND `Enum` makes a "string enum" — each member
-        IS a real string (`AppEnv.PRODUCTION == "production"` is True) while also
-        being a typed, autocomplete-friendly constant.
-    JAVA NOTE: this is Python's equivalent of a Java `enum`, but the `str` mixin
+    SYNTAX TIP: `StrEnum` (Python 3.11+) makes a "string enum" — each member IS a
+        real string (`AppEnv.PRODUCTION == "production"` is True) while also being
+        a typed, autocomplete-friendly constant. It replaces the older
+        `class AppEnv(str, Enum)` idiom.
+    JAVA NOTE: this is Python's equivalent of a Java `enum`, but the `str` base
         gives you Java-style `name()`/value behavior plus seamless JSON/env
         serialization.
     """
@@ -44,7 +45,7 @@ class AppEnv(str, Enum):
     TEST = "test"
 
 
-class LLMProviderName(str, Enum):
+class LLMProviderName(StrEnum):
     """Which LLM backend the agent should use."""
 
     MOCK = "mock"  # deterministic, offline, no API key required
