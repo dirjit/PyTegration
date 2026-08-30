@@ -32,7 +32,7 @@ class GradeResult:
     reason: str = ""  # human-readable why (shows up in CI logs)
 
 
-# ── Eval type #1: deterministic graders ──────────────────────────────────────
+# ── Eval type #1: deterministic graders ───────────────────────────────────
 
 
 def grade_exact(expected: str, actual: str, *, strip: bool = True, ci: bool = True) -> GradeResult:
@@ -73,7 +73,7 @@ def grade_numeric(expected: float, actual: str | float, *, tol: float = 1e-6) ->
     $42.50" style answers where formatting varies but the value must be right.
     """
     try:
-        value = actual if isinstance(actual, (int, float)) else _first_number(str(actual))
+        value = actual if isinstance(actual, int | float) else _first_number(str(actual))
     except ValueError as exc:
         return GradeResult(passed=False, score=0.0, reason=str(exc))
     ok = abs(float(value) - float(expected)) <= tol
