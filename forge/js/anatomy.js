@@ -99,6 +99,19 @@ export function loadAnatomyAssets(base, lod) {
       }
       meshes[name] = { geometry: g, matrix: o.matrixWorld.clone() };
     });
+    // Plantar toe pads hang a few mm below the sole plane the foot markers
+    // sit on; flatten them onto it, as a loaded pad does.
+    if (meshes.digits) {
+      const { geometry: dg, matrix: M } = meshes.digits;
+      const P = dg.getAttribute('position'); const S = dg.getAttribute('sid');
+      const Mi = M.clone().invert(); const sole = meta.markers.heelL.p[1] + 0.0003; const tv = new THREE.Vector3();
+      for (let i = 0; i < P.count; i++) {
+        if (!/surfaces of digits of foot/.test(meta.structures[Math.round(S.getX(i))].name)) continue;
+        tv.fromBufferAttribute(P, i).applyMatrix4(M);
+        if (tv.y < sole) { tv.y = sole; tv.applyMatrix4(Mi); P.setXYZ(i, tv.x, tv.y, tv.z); }
+      }
+      P.needsUpdate = true;
+    }
     // Per-structure centroid and dominant segment (label anchors, picking).
     const nS = meta.structures.length;
     const sum = new Float64Array(nS * 3); const cnt = new Uint32Array(nS);

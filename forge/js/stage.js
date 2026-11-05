@@ -513,8 +513,9 @@ export class Stage {
     }
     if (ex.props?.includes('bench')) {
       const i = r.world(ex.benchFoot || 'instepR');
-      P.bench.position.set(i.x, i.y - 0.035, i.z - 0.12);
-      P.bench.userData.update(i.y - 0.035);
+      const top = i.y - (ex.benchDrop ?? 0.035);
+      P.bench.position.set(i.x, top, i.z - 0.12);
+      P.bench.userData.update(top);
     }
     if (ex.props?.includes('mat')) {
       const c = r.world('pelvis');
@@ -721,7 +722,8 @@ export class Stage {
       if (this.ex.floorClamp) {
         let minY = Infinity;
         for (const n of ['gluteL', 'gluteR', 'scapL', 'scapR', 'occiput', 'sacrum', 'lumbar', 'upperBack']) minY = Math.min(minY, rig.world(n, tmpV).y);
-        if (minY < 0) { root.position.y -= minY; root.updateMatrixWorld(true); }
+        const floorY = typeof this.ex.floorClamp === 'number' ? this.ex.floorClamp : 0; // mat top = 0.01
+        if (minY < floorY) { root.position.y += floorY - minY; root.updateMatrixWorld(true); }
       }
 
       // Flat feet: orient each foot level with the floor regardless of the

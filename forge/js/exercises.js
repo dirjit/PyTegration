@@ -68,7 +68,7 @@ export const EXERCISES = [
     secondary: ['delts', 'abs'],
     props: ['mat'],
     view: 'side',
-    anchor: { point: 'mid:toeL,toeR', target: [0, 0, -0.75], second: { point: HANDS, y: 0.03 } },
+    anchor: { point: 'mid:toeL,toeR', target: [0, 0.02, -0.75], second: { point: HANDS, y: 0.03 } },
     ik: { joints: ['shoulder', 'shoulder'], axes: [0, 1], point: 'handL', dims: ['z', 'x'] },
     poses: [
       { root: [78], neck: [6], shoulder: [-63, 0, 18], elbow: [-3], wrist: [102], ankle: [6] },
@@ -174,7 +174,7 @@ export const EXERCISES = [
     secondary: ['traps', 'chest', 'abs'],
     props: ['mat'],
     view: 'side',
-    anchor: { point: 'mid:toeL,toeR', target: [0, 0, -0.6], second: { point: HANDS, y: 0.03 } },
+    anchor: { point: 'mid:toeL,toeR', target: [0, 0.017, -0.6], second: { point: HANDS, y: 0.03 } },
     ik: { joints: 'shoulder', point: HANDS },
     poses: [
       { root: [132], neck: [-6], shoulder: [-132, 0, 18], elbow: [-3], wrist: [87], hip: [-96], ankle: [18] },
@@ -274,7 +274,7 @@ export const EXERCISES = [
     secondary: ['biceps', 'delts', 'glutes'],
     props: ['bar'],
     view: 'threeQuarter',
-    anchor: { point: HANDS, target: [0, 1.1, 0], second: { point: 'mid:heelL,heelR', y: 0 } },
+    anchor: { point: HANDS, target: [0, 1.1, 0], second: { point: 'mid:heelL,heelR', y: 0.006 } },
     ik: { joints: 'shoulder', point: 'mid:heelL,heelR' },
     poses: [
       { root: [-62], shoulder: [-100, 0, 16], elbow: [-2], ankle: [-6] },
@@ -327,8 +327,8 @@ export const EXERCISES = [
     ik: { joints: ['hipR', 'kneeR'], point: 'ankleR', dims: ['y', 'z'] },
     lockFeet: ['R'],
     poses: [
-      { root: [10], shoulder: [-10, 0, 8], hipL: [-18], kneeL: [10], hipR: [14], kneeR: [60], ankleR: [62] },
-      { root: [24], shoulder: [-24, 0, 8], hipL: [-92], kneeL: [100], hipR: [-6], kneeR: [108], ankleR: [64] },
+      { root: [10], shoulder: [-10, 0, 8], hipL: [-18], kneeL: [10], hipR: [14], kneeR: [60], ankleR: [68] },
+      { root: [24], shoulder: [-24, 0, 8], hipL: [-92], kneeL: [100], hipR: [-6], kneeR: [108], ankleR: [70] },
     ],
     tempo: [
       { label: 'Descend', dur: 3, from: 0, to: 1, tension: 0.9 },
@@ -347,6 +347,7 @@ export const EXERCISES = [
       delta: [{}, { hipL: [0, -14, -14], kneeL: [-10], spine: [22], chest: [12] }],
     },
     benchFoot: 'instepR',
+    benchDrop: 0.015,
     prescription: '3 × 8–12 / leg',
     rest: '90 s',
     cues: [
@@ -524,13 +525,13 @@ export const EXERCISES = [
     secondary: ['obliques', 'quads'],
     props: ['mat'],
     view: 'side',
-    anchor: { point: 'lumbar', target: [0, 0.0, 0] },
-    floorClamp: true,
+    anchor: { point: 'lumbar', target: [0, 0.01, 0] },
+    floorClamp: 0.01,
     matZ: 0,
     poses: [
-      { root: [-90], shoulder: [-10, 0, 8], hip: [-88], knee: [92], ankle: [10] },
-      { root: [-90], spine: [16], chest: [10], neck: [22], shoulder: [-168, 0, 10], hip: [-18], knee: [2], ankle: [32] },
-      { root: [-90], spine: [18], chest: [11], neck: [22], shoulder: [-164, 0, 10], hip: [-15], knee: [2], ankle: [32] },
+      { root: [-90], shoulder: [11.5, 0, 10], elbow: [-12], hip: [-88], knee: [92], ankle: [10] },
+      { root: [-96], spine: [11], chest: [8], neck: [14], shoulder: [-174, 0, 10], hip: [-11], knee: [2], ankle: [45] },
+      { root: [-96], spine: [13], chest: [8], neck: [14], shoulder: [-176, 0, 10], hip: [-8], knee: [2], ankle: [45] },
     ],
     tempo: [
       { label: 'Press low back down', dur: 1.4, from: 0, to: 1, ease: 'inOut', tension: 0.8 },
@@ -545,7 +546,7 @@ export const EXERCISES = [
     trace: { pt: 'mid:toeL,toeR', label: 'Legs low, back flat' },
     fault: {
       label: 'Lower back arches off the floor',
-      delta: [{}, { spine: [-22], chest: [-6], hip: [10] }, { spine: [-22], chest: [-6], hip: [10] }],
+      delta: [{}, { root: [10], spine: [-14], chest: [-6] }, { root: [10], spine: [-14], chest: [-6] }],
     },
     prescription: '3 × 20–40 s',
     rest: '60 s',
@@ -575,13 +576,13 @@ export const EXERCISES = [
     secondary: ['hams', 'abs'],
     props: ['mat'],
     view: 'side',
-    anchor: { point: 'upperBack', target: [0, 0, -0.45], second: { point: 'heelL', y: 0.0 } },
-    ik: { joints: 'kneeL', point: 'heelL' },
+    anchor: { point: 'upperBack', target: [0, 0.01, -0.45], second: { point: 'heelL', y: 0.01 } },
+    ik: [{ joints: 'kneeL', point: 'heelL' }, { joints: 'shoulder', point: 'handL', dims: ['y'] }],
     flatFeet: ['L'],
     matZ: 0,
     poses: [
-      { root: [-90], shoulder: [-6, 0, 22], elbow: [-2], hipL: [-42], kneeL: [105], hipR: [-42], kneeR: [4], ankleR: [-8] },
-      { root: [-90], neck: [30], shoulder: [-6, 0, 22], elbow: [-2], hipL: [-6], kneeL: [92], hipR: [-6], kneeR: [4], ankleR: [-8] },
+      { root: [-90], shoulder: [14, 0, 22], elbow: [-16], wrist: [8], hipL: [-42], kneeL: [105], hipR: [-42], kneeR: [4], ankleR: [-8] },
+      { root: [-90], neck: [30], shoulder: [14, 0, 22], elbow: [-16], wrist: [8], hipL: [-6], kneeL: [92], hipR: [-6], kneeR: [4], ankleR: [-8] },
     ],
     tempo: [
       { label: 'Drive hips up', dur: 1, from: 0, to: 1, ease: 'drive', tension: 1 },
