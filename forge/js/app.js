@@ -488,8 +488,18 @@ function renderTracker() {
   $('#ringCount').textContent = `${n} / 36`;
   $('#ringFg').style.strokeDashoffset = 326.7 * (1 - n / 36);
 }
-$('#resetTracker').addEventListener('click', () => {
-  if (confirm('Reset all ticked sessions?')) { store.set('tracker', []); renderTracker(); }
+// Two-tap reset (no confirm() dialog — it is blocked in sandboxed frames).
+let resetArmed = null;
+$('#resetTracker').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  if (resetArmed) {
+    clearTimeout(resetArmed); resetArmed = null;
+    store.set('tracker', []); renderTracker();
+    btn.textContent = 'Reset';
+    return;
+  }
+  btn.textContent = 'Tap again to reset';
+  resetArmed = setTimeout(() => { resetArmed = null; btn.textContent = 'Reset'; }, 3000);
 });
 renderTracker();
 

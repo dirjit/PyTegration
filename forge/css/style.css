@@ -41,7 +41,7 @@ em { color: var(--amber); font-style: normal; }
 .nav {
   position: fixed; inset: 0 0 auto 0; z-index: 50;
   display: flex; align-items: center; gap: 24px;
-  padding: 14px 28px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) max(28px, env(safe-area-inset-right, 0px)) 14px max(28px, env(safe-area-inset-left, 0px));
   background: linear-gradient(to bottom, rgba(10,13,19,.92), rgba(10,13,19,.65));
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(255,255,255,.04);
@@ -348,7 +348,9 @@ select, input[type=number] {
 .footer .fine { color: var(--dim); font-size: 13px; max-width: 720px; margin: 10px auto 0; }
 
 /* ---------- reveal ---------- */
-.reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+/* Content is visible at rest; the entrance is a subtle lift that only plays once in view. */
+.reveal { transition: transform .7s ease, opacity .7s ease; }
+.reveal:not(.in) { transform: translateY(10px); opacity: .85; }
 .reveal.in { opacity: 1; transform: none; }
 
 /* ---------- responsive ---------- */
