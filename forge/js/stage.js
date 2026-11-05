@@ -231,7 +231,7 @@ export class Stage {
 
     this.mats = createMaterials();
     this.rig = new Rig(this.mats);
-    scene.add(this.rig.root);
+    scene.add(this.rig.object);
     this.rig.bones.wristL.add(this.props.dbL);
     this.rig.bones.wristR.add(this.props.dbR);
     this.props.dbL.position.set(0, -0.07, 0.01);
@@ -240,7 +240,7 @@ export class Stage {
     if (!this.opts.hero) {
       const gm = createMaterials({ ghost: true });
       this.ghosts = [new Rig(gm), new Rig(gm)];
-      this.ghosts.forEach((g) => { g.root.visible = false; scene.add(g.root); });
+      this.ghosts.forEach((g) => { g.object.visible = false; scene.add(g.object); });
     } else {
       this.ghosts = [];
     }
@@ -473,11 +473,11 @@ export class Stage {
     const vf = (this.camera.fov * DEG) / 2;
     const hf = Math.atan(Math.tan(vf) * this.camera.aspect);
     const f = Math.min(vf, hf);
-    return (this._radius / Math.sin(f)) * (this.opts.hero ? 1.05 : 1.12);
+    return (this._radius / Math.sin(f)) * (this.opts.hero ? 1.05 : 1.3);
   }
 
   _applyGhostVisibility() {
-    this.ghosts.forEach((g) => (g.root.visible = this.toggles.ghosts && !!this.ex));
+    this.ghosts.forEach((g) => (g.object.visible = this.toggles.ghosts && !!this.ex));
   }
 
   setToggle(k, v) {
@@ -672,7 +672,7 @@ export class Stage {
 
     this.controls.update();
     this.composer.render();
-    this._updateLabels();
+    this._updateLabels(dt);
   }
 
   _updateKB() {
@@ -733,7 +733,7 @@ export class Stage {
       if (segI < 6) { this.angleSegs[segI].set(b, c); this.angleSegs[segI++].mesh.visible = true; }
       if (dotI < 3) { this.angleDots[dotI].position.copy(b); this.angleDots[dotI++].visible = true; }
       const inRange = m.good ? deg >= m.good[0] && deg <= m.good[1] : true;
-      this.readouts.push({ pos: b.clone(), text: `${m.label} ${deg.toFixed(0)}°`, cls: inRange ? 'angle in' : 'angle', offset: m.offset });
+      this.readouts.push({ pos: b.clone(), text: `${m.label} ${deg.toFixed(0)}°`, cls: inRange ? 'angle in' : 'angle' });
     });
 
     // Motion trace
@@ -754,32 +754,133 @@ export class Stage {
       this.trace.geometry.attributes.position.needsUpdate = true;
       this.trace.geometry.attributes.color.needsUpdate = true;
       this.trace.geometry.setDrawRange(0, Math.max(1, n));
-      if (ex.trace.label) this.readouts.push({ pos: p.clone(), text: ex.trace.label, cls: 'trace', offset: [-120, 12] });
+      if (ex.trace.label) this.readouts.push({ pos: p.clone(), text: ex.trace.label, cls: 'trace' });
     }
   }
 
-  _updateLabels() {
+  /**
+   * Callout labels: readouts are laid out OUTSIDE the figure's on-screen
+   * outline (left/right of a standing body, above/below a horizontal one),
+   * de-overlapped, and tied to their joint with an arrowed leader line.
+   */
+  _updateLabels(dt = 1 / 60) {
     const R = this.readouts || [];
+    const W = this.container.clientWidth;
+    const H = this.container.clientHeight;
+    if (!this.leaderSvg) {
+      const NS = 'http://www.w3.org/2000/svg';
+      this.leaderSvg = document.createElementNS(NS, 'svg');
+      this.leaderSvg.setAttribute('class', 'leaders');
+      this.labelLayer.appendChild(this.leaderSvg);
+      this.leaders = [];
+    }
     while (this.labels.length < R.length) {
       const el = document.createElement('div');
       el.className = 'label3d';
       this.labelLayer.appendChild(el);
       this.labels.push(el);
+      const NS = 'http://www.w3.org/2000/svg';
+      const g = document.createElementNS(NS, 'g');
+      g.innerHTML = '<line/><polygon/><circle r="3.2"/>';
+      this.leaderSvg.appendChild(g);
+      this.leaders.push(g);
     }
-    const w = this.container.clientWidth;
-    const h = this.container.clientHeight;
-    this.labels.forEach((el, i) => {
-      const r = R[i];
-      if (!r) { el.style.display = 'none'; return; }
-      const p = r.pos.clone().project(this.camera);
-      el.style.display = p.z < 1 ? 'block' : 'none';
-      const x = (p.x * 0.5 + 0.5) * w + (r.offset?.[0] ?? 14);
-      const y = (-p.y * 0.5 + 0.5) * h + (r.offset?.[1] ?? -10);
-      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-      if (el._t !== r.text) { el.textContent = r.text; el._t = r.text; }
+
+    // Screen-space outline of the body.
+    const pts = ['headTop', 'toeL', 'toeR', 'heelL', 'handL', 'handR', 'elbowL', 'elbowR', 'kneeCapL', 'kneeCapR', 'pelvis', 'shoulderL', 'shoulderR', 'sacrum'];
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    const v = new THREE.Vector3();
+    for (const n of pts) {
+      this.rig.world(n, v).project(this.camera);
+      const sx = (v.x * 0.5 + 0.5) * W; const sy = (-v.y * 0.5 + 0.5) * H;
+      x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+    }
+    const pad = 16; x0 -= pad; x1 += pad; y0 -= pad * 1.6; y1 += pad;
+    const TOP = W < 560 ? 70 : 84; const BOT = W < 560 ? 64 : 58; const GAP = 26; const EDGE = 10;
+    const wide = (x1 - x0) > (y1 - y0) * 1.1;
+
+    const items = [];
+    R.forEach((r, i) => {
+      const el = this.labels[i];
+      if (el._t !== r.text) { el.textContent = r.text; el._t = r.text; el._w = 0; }
       const cls = 'label3d ' + r.cls;
       if (el.className !== cls) el.className = cls;
+      el.style.display = 'block';
+      if (!el._w) { el._w = el.offsetWidth; el._h = el.offsetHeight; }
+      const p = r.pos.clone().project(this.camera);
+      if (p.z > 1) { el.style.display = 'none'; return; }
+      const px = (p.x * 0.5 + 0.5) * W; const py = (-p.y * 0.5 + 0.5) * H;
+      const w = el._w; const h = el._h;
+      const fitL = x0 - GAP - w >= EDGE; const fitR = x1 + GAP + w <= W - EDGE;
+      const fitT = y0 - GAP - h >= TOP; const fitB = y1 + GAP + h <= H - BOT;
+      let side;
+      if (!wide) {
+        side = px < (x0 + x1) / 2 ? 'L' : 'R';
+        if (side === 'L' && !fitL) side = fitR ? 'R' : (fitT ? 'T' : 'B');
+        else if (side === 'R' && !fitR) side = fitL ? 'L' : (fitT ? 'T' : 'B');
+      } else {
+        side = py < (y0 + y1) / 2 ? 'T' : 'B';
+        if (side === 'T' && !fitT) side = fitB ? 'B' : (fitL ? 'L' : 'R');
+        else if (side === 'B' && !fitB) side = fitT ? 'T' : (fitR ? 'R' : 'L');
+      }
+      items.push({ i, el, r, px, py, w, h, side });
     });
+
+    // Place and de-overlap each side's stack.
+    for (const side of ['L', 'R', 'T', 'B']) {
+      const g = items.filter((it) => it.side === side);
+      if (!g.length) continue;
+      if (side === 'L' || side === 'R') {
+        g.sort((a, b) => a.py - b.py);
+        let prev = -Infinity;
+        for (const it of g) {
+          it.x = side === 'L' ? Math.max(EDGE, x0 - GAP - it.w) : Math.min(W - EDGE - it.w, x1 + GAP);
+          it.y = Math.max(TOP, Math.min(H - BOT - it.h, it.py - it.h / 2), prev + 6);
+          prev = it.y + it.h;
+        }
+        const over = prev - (H - BOT);
+        if (over > 0) g.forEach((it) => (it.y = Math.max(TOP, it.y - over)));
+      } else {
+        g.sort((a, b) => a.px - b.px);
+        let prev = -Infinity;
+        for (const it of g) {
+          it.y = side === 'T' ? Math.max(TOP, y0 - GAP - it.h) : Math.min(H - BOT - it.h, y1 + GAP);
+          it.x = Math.max(EDGE, Math.min(W - EDGE - it.w, it.px - it.w / 2), prev + 8);
+          prev = it.x + it.w;
+        }
+        const over = prev - (W - EDGE);
+        if (over > 0) g.forEach((it) => (it.x = Math.max(EDGE, it.x - over)));
+      }
+    }
+
+    // Draw (with light smoothing so stacks glide instead of jitter).
+    this.labels.forEach((el, i) => { if (!R[i]) el.style.display = 'none'; });
+    this.leaders.forEach((g) => (g.style.display = 'none'));
+    for (const it of items) {
+      const el = it.el;
+      const k = el._x == null || Math.abs(el._x - it.x) > 220 ? 1 : 1 - Math.exp(-dt * 14);
+      el._x = el._x == null ? it.x : el._x + (it.x - el._x) * k;
+      el._y = el._y == null ? it.y : el._y + (it.y - el._y) * k;
+      el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`;
+      let ax; let ay;
+      if (it.side === 'L') { ax = el._x + it.w; ay = el._y + it.h / 2; }
+      else if (it.side === 'R') { ax = el._x; ay = el._y + it.h / 2; }
+      else if (it.side === 'T') { ax = el._x + it.w / 2; ay = el._y + it.h; }
+      else { ax = el._x + it.w / 2; ay = el._y; }
+      const g = this.leaders[it.i];
+      g.style.display = '';
+      g.setAttribute('class', 'leader ' + it.r.cls);
+      const dx = it.px - ax; const dy = it.py - ay;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len; const uy = dy / len;
+      const tipX = it.px - ux * 5; const tipY = it.py - uy * 5;
+      const [line, poly, dotEl] = g.children;
+      line.setAttribute('x1', ax.toFixed(1)); line.setAttribute('y1', ay.toFixed(1));
+      line.setAttribute('x2', (tipX - ux * 6).toFixed(1)); line.setAttribute('y2', (tipY - uy * 6).toFixed(1));
+      const bx = tipX - ux * 9; const by = tipY - uy * 9;
+      poly.setAttribute('points', `${tipX.toFixed(1)},${tipY.toFixed(1)} ${(bx - uy * 4.5).toFixed(1)},${(by + ux * 4.5).toFixed(1)} ${(bx + uy * 4.5).toFixed(1)},${(by - ux * 4.5).toFixed(1)}`);
+      dotEl.setAttribute('cx', it.px.toFixed(1)); dotEl.setAttribute('cy', it.py.toFixed(1));
+    }
   }
 
   _resize() {

@@ -157,11 +157,11 @@ $('#tabs').addEventListener('click', (e) => {
 
 if (lab) {
   const pill = $('#phasePill');
-  let lastSeg = -1;
+  let lastSeg = null;
   lab.on(({ seg, index, cycleT, rep }) => {
     $('#tlHead').style.left = `calc(${(cycleT * 100).toFixed(2)}% - 1px)`;
-    if (index !== lastSeg) {
-      lastSeg = index;
+    if (seg !== lastSeg) {
+      lastSeg = seg;
       $('#phaseName').textContent = seg.label;
       pill.classList.toggle('hold', seg.from === seg.to);
       $$('.tl-seg').forEach((s, i) => s.classList.toggle('on', i === index));

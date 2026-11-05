@@ -21,7 +21,7 @@ access the first time.
 
 | File | What it does |
 | --- | --- |
-| `js/rig.js` | Procedural mannequin: lathe-turned body segments, 15 separately lit muscle groups that bulge as joints flex. |
+| `js/rig.js` | Procedural anatomical figure: ~70 shaped muscle bellies with fibre texture over a deep-muscle layer, merged into skinned meshes so joints bend like flesh; 16 separately lit muscle groups, contraction morphs. |
 | `js/stage.js` | Renderer, studio lighting, bloom, props, and the **contact solver** (feet/hands/back stay planted), Gauss-Newton IK for sliding contacts, joint-angle readouts, alignment lines, motion traces and range-of-motion ghosts. |
 | `js/exercises.js` | The 12 movements: poses, tempo timelines, contact anchors, the "mistake" variant, cues, mistakes, breathing, progressions. |
 | `js/program.js` | Phases, sessions, progression rules and tagged field notes. |
@@ -30,6 +30,7 @@ access the first time.
 ## Form Lab features
 
 - Orbit / zoom, camera presets (front, side, ¾, back, top), 0.25×–1.5× speed, scrubbable tempo timeline.
+- Callout labels sit beside the figure with arrowed leader lines, never on top of it.
 - **Joint angles** that turn gold when you're inside the target range.
 - **Alignment line** (body line, spine neutral, hip lockout) that turns red when you break position.
 - **Motion path** of the key landmark (sternum, bar path, bell arc…).

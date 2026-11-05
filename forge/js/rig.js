@@ -1,9 +1,13 @@
 // =============================================================================
-// rig.js — a procedural, anatomically-zoned 3D mannequin built from scratch.
+// rig.js — a procedural, skinned, anatomically-muscled human figure.
 // -----------------------------------------------------------------------------
-// No external model files: every body segment is a lathe-turned tapered shape
-// and every major muscle is its own mesh, so we can light it up (primary /
-// secondary movers) and make it "contract" as the joint it crosses flexes.
+// No model files. The body is assembled from lathe-turned segments and ~70
+// individually shaped muscle bellies, then merged into skinned meshes driven
+// by one skeleton. Vertices near each joint are blended between neighbouring
+// bones, so elbows, knees, hips and shoulders bend like flesh instead of
+// pivoting like a robot's ball joints. Every muscle group has its own
+// material, so the movers of an exercise can glow, and some bellies
+// "contract" (morph target) as the joint they cross flexes.
 //
 // Joint conventions (degrees, Euler order XYZ, character faces +Z):
 //   root   x+ = pitch forward (head toward +Z)
@@ -17,10 +21,15 @@
 // mirroring y and z for the right side. L/R suffixed keys override.
 // =============================================================================
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const DEG = Math.PI / 180;
 const V2 = THREE.Vector2;
 const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 export const SIDE_JOINTS = ['shoulder', 'elbow', 'wrist', 'hip', 'knee', 'ankle'];
 export const CENTER_JOINTS = ['root', 'spine', 'chest', 'neck', 'head'];
@@ -29,21 +38,37 @@ export const ALL_JOINTS = [
   ...SIDE_JOINTS.flatMap((j) => [j + 'L', j + 'R']),
 ];
 
-// Resting "neutral" angles so arms don't clip through the torso.
+// Resting "neutral" angles so arms hang naturally beside the torso.
 const REST = {
   shoulderL: [0, 0, 7], shoulderR: [0, 0, -7],
   elbowL: [-6, 0, 0], elbowR: [-6, 0, 0],
 };
 
-/** Tapered limb hanging from y=0 to y=-len with a gaussian muscle belly. */
-function limbGeo(len, r0, r1, belly = 0, peak = 0.35, radial = 36) {
+// Skin-weight blending per bone: the bone's own axis (local end point), and
+// how far (as a fraction of that axis) vertices blend into parent / child.
+const BLEND = {
+  root: { seg: [0, 0.08, 0], child: ['spine', 0.35] },
+  spine: { seg: [0, 0.2, 0], parent: ['root', 0.3], child: ['chest', 0.3] },
+  chest: { seg: [0, 0.305, 0], parent: ['spine', 0.22], child: ['neck', 0.08] },
+  neck: { seg: [0, 0.09, 0], parent: ['chest', 0.45], child: ['head', 0.3] },
+  head: { seg: [0, 0.2, 0], parent: ['neck', 0.1] },
+  shoulder: { seg: [0, -0.29, 0], parent: ['chest', 0.14, 0.42], child: ['elbow', 0.13] },
+  elbow: { seg: [0, -0.26, 0], parent: ['shoulder', 0.13], child: ['wrist', 0.12] },
+  wrist: { seg: [0, -0.1, 0], parent: ['elbow', 0.2] },
+  hip: { seg: [0, -0.44, 0], parent: ['root', 0.14, 0.5], child: ['knee', 0.11] },
+  knee: { seg: [0, -0.42, 0], parent: ['hip', 0.11], child: ['ankle', 0.09] },
+  ankle: { seg: [0, -0.07, 0], parent: ['knee', 0.35] },
+};
+
+/** Tapered limb hanging from y=0 to y=-len with a gaussian belly. */
+function limbGeo(len, r0, r1, belly = 0, peak = 0.35, radial = 28) {
   const p = [];
-  const cap = 8;
+  const cap = 7;
   for (let i = 0; i <= cap; i++) {
     const a = (Math.PI / 2) * (i / cap);
     p.push(new V2(Math.sin(a) * r0, Math.cos(a) * r0 * 0.55));
   }
-  const N = 26;
+  const N = 22;
   for (let i = 1; i < N; i++) {
     const t = i / N;
     const b = belly * Math.exp(-Math.pow((t - peak) / 0.26, 2));
@@ -60,35 +85,63 @@ function limbGeo(len, r0, r1, belly = 0, peak = 0.35, radial = 36) {
 }
 
 /** Lathe from a [radius, y] profile given bottom -> top. */
-function torsoGeo(profile, radial = 48) {
+function torsoGeo(profile, radial = 40) {
   const g = new THREE.LatheGeometry(profile.map(([r, y]) => new V2(r, y)), radial);
   g.computeVertexNormals();
   return g;
 }
 
-const SPHERE = new THREE.SphereGeometry(1, 40, 28);
+const SPHERE = new THREE.SphereGeometry(1, 30, 22);
+const SPHERE_LO = new THREE.SphereGeometry(1, 18, 12);
 
-// Muscle catalogue: [group, bone, position, scale, rotation(deg), mirror]
-// Positions are for the LEFT side (+X); mirrored automatically.
+// Muscle catalogue: [group, bone, position, scale, rotation(deg), bulge]
+// Positions are for the LEFT side (+X) and mirrored automatically.
+// Bellies are unit spheres scaled into anatomical shapes and sunk into the
+// underlying segment so only their contour shows, like real muscle under fascia.
 const MUSCLES = [
-  ['chest', 'chest', [0.082, 0.19, 0.098], [0.088, 0.066, 0.036], [0, 0, 18], true],
-  ['delts', 'shoulder', [0.012, -0.03, 0.0], [0.064, 0.085, 0.07], [0, 0, 6], true],
-  ['biceps', 'shoulder', [0.0, -0.16, 0.034], [0.038, 0.088, 0.038], [0, 0, 0], true],
-  ['triceps', 'shoulder', [0.0, -0.14, -0.034], [0.044, 0.1, 0.04], [0, 0, 0], true],
-  ['forearms', 'elbow', [0.0, -0.085, 0.006], [0.043, 0.095, 0.038], [0, 0, 0], true],
-  ['lats', 'chest', [0.118, 0.11, -0.055], [0.058, 0.135, 0.038], [8, 0, -22], true],
-  ['traps', 'chest', [0.07, 0.29, -0.035], [0.085, 0.042, 0.05], [0, 0, -22], true],
-  ['upperback', 'chest', [0.055, 0.19, -0.095], [0.06, 0.07, 0.028], [0, 0, 0], true],
-  ['abs', 'spine', [0.034, 0.015, 0.098], [0.03, 0.03, 0.018], [0, 0, 0], true],
-  ['abs', 'spine', [0.034, 0.085, 0.1], [0.031, 0.032, 0.018], [0, 0, 0], true],
-  ['abs', 'spine', [0.034, 0.155, 0.1], [0.032, 0.032, 0.018], [0, 0, 0], true],
-  ['abs', 'chest', [0.034, 0.025, 0.103], [0.032, 0.03, 0.018], [0, 0, 0], true],
-  ['obliques', 'spine', [0.103, 0.09, 0.035], [0.03, 0.085, 0.055], [0, 0, 4], true],
-  ['lowerback', 'spine', [0.038, 0.09, -0.084], [0.03, 0.11, 0.028], [0, 0, 0], true],
-  ['glutes', 'root', [0.068, -0.045, -0.075], [0.085, 0.092, 0.07], [0, 0, 0], true],
-  ['quads', 'hip', [0.0, -0.205, 0.04], [0.07, 0.175, 0.058], [0, 0, 0], true],
-  ['hams', 'hip', [0.0, -0.22, -0.042], [0.06, 0.165, 0.052], [0, 0, 0], true],
-  ['calves', 'knee', [0.0, -0.12, -0.035], [0.05, 0.105, 0.048], [0, 0, 0], true],
+  // --- chest & shoulder girdle ---
+  ['chest', 'chest', [0.07, 0.195, 0.088], [0.088, 0.072, 0.042], [-8, -10, 16], 0],
+  ['chest', 'chest', [0.12, 0.215, 0.07], [0.055, 0.042, 0.034], [0, -20, 32], 0],
+  ['chest', 'chest', [0.065, 0.14, 0.092], [0.07, 0.035, 0.03], [0, -8, 8], 0],
+  ['delts', 'shoulder', [0.012, -0.04, 0.026], [0.05, 0.095, 0.05], [10, 0, 6], 0],
+  ['delts', 'shoulder', [0.03, -0.045, 0.0], [0.045, 0.1, 0.055], [0, 0, 8], 0],
+  ['delts', 'shoulder', [0.012, -0.04, -0.028], [0.05, 0.092, 0.05], [-10, 0, 6], 0],
+  ['traps', 'chest', [0.07, 0.29, -0.03], [0.09, 0.042, 0.055], [0, 0, -24], 0],
+  ['traps', 'neck', [0.032, 0.035, 0.03], [0.016, 0.065, 0.02], [-28, 0, -8], 0],
+  ['upperback', 'chest', [0.045, 0.2, -0.098], [0.06, 0.085, 0.03], [0, 0, -10], 0],
+  ['upperback', 'chest', [0.11, 0.2, -0.085], [0.05, 0.05, 0.03], [0, 20, -20], 0],
+  ['lats', 'chest', [0.115, 0.11, -0.055], [0.068, 0.15, 0.042], [10, 0, -20], 0],
+  ['lats', 'spine', [0.085, 0.13, -0.075], [0.06, 0.1, 0.032], [0, 0, -12], 0],
+  // --- arms ---
+  ['biceps', 'shoulder', [-0.005, -0.165, 0.034], [0.036, 0.095, 0.04], [0, 0, 0], 0.016],
+  ['triceps', 'shoulder', [0.016, -0.13, -0.032], [0.038, 0.11, 0.04], [0, 0, 4], 0],
+  ['triceps', 'shoulder', [-0.014, -0.17, -0.03], [0.032, 0.09, 0.035], [0, 0, -4], 0],
+  ['forearms', 'elbow', [-0.012, -0.075, 0.016], [0.036, 0.095, 0.034], [0, 0, -4], 0],
+  ['forearms', 'elbow', [0.016, -0.065, 0.004], [0.036, 0.1, 0.034], [0, 0, 6], 0],
+  // --- core ---
+  ['abs', 'spine', [0.03, 0.015, 0.093], [0.028, 0.031, 0.02], [0, 0, 0], 0],
+  ['abs', 'spine', [0.031, 0.083, 0.096], [0.029, 0.032, 0.021], [0, 0, 0], 0],
+  ['abs', 'spine', [0.032, 0.152, 0.097], [0.03, 0.032, 0.021], [0, 0, 0], 0],
+  ['abs', 'chest', [0.033, 0.025, 0.1], [0.031, 0.03, 0.02], [0, 0, 0], 0],
+  ['obliques', 'spine', [0.098, 0.085, 0.038], [0.034, 0.09, 0.06], [0, 0, 6], 0],
+  ['obliques', 'chest', [0.13, 0.12, 0.05], [0.022, 0.017, 0.022], [0, 0, -30], 0],
+  ['obliques', 'chest', [0.135, 0.085, 0.045], [0.022, 0.017, 0.022], [0, 0, -30], 0],
+  ['obliques', 'chest', [0.132, 0.05, 0.04], [0.022, 0.017, 0.022], [0, 0, -30], 0],
+  ['lowerback', 'spine', [0.036, 0.09, -0.082], [0.03, 0.12, 0.03], [0, 0, 0], 0],
+  ['lowerback', 'root', [0.034, 0.03, -0.088], [0.028, 0.07, 0.025], [0, 0, 0], 0],
+  // --- hips & legs ---
+  ['glutes', 'root', [0.068, -0.05, -0.072], [0.088, 0.1, 0.072], [0, 0, -8], 0],
+  ['glutes', 'root', [0.112, 0.02, -0.025], [0.045, 0.06, 0.055], [0, 0, -10], 0],
+  ['quads', 'hip', [0.0, -0.205, 0.05], [0.044, 0.18, 0.044], [4, 0, 0], 0],
+  ['quads', 'hip', [0.042, -0.24, 0.012], [0.048, 0.17, 0.05], [0, 0, 3], 0],
+  ['quads', 'hip', [-0.034, -0.33, 0.034], [0.044, 0.085, 0.044], [0, 0, -10], 0],
+  ['adductors', 'hip', [-0.048, -0.13, -0.002], [0.042, 0.13, 0.05], [0, 0, -12], 0],
+  ['hams', 'hip', [0.024, -0.245, -0.045], [0.04, 0.17, 0.044], [0, 0, 2], 0.01],
+  ['hams', 'hip', [-0.024, -0.245, -0.045], [0.038, 0.17, 0.042], [0, 0, -2], 0.01],
+  ['calves', 'knee', [0.022, -0.12, -0.034], [0.033, 0.1, 0.042], [0, 0, 3], 0.012],
+  ['calves', 'knee', [-0.02, -0.11, -0.036], [0.035, 0.105, 0.044], [0, 0, -3], 0.012],
+  ['calves', 'knee', [0.0, -0.2, -0.024], [0.044, 0.1, 0.034], [0, 0, 0], 0],
+  ['calves', 'knee', [0.022, -0.16, 0.03], [0.02, 0.12, 0.022], [0, 0, 0], 0],
 ];
 
 export const MUSCLE_GROUPS = [...new Set(MUSCLES.map((m) => m[0]))];
@@ -98,33 +151,87 @@ export const MUSCLE_LABEL = {
   forearms: 'Forearms / grip', lats: 'Lats', traps: 'Traps',
   upperback: 'Upper back', abs: 'Abs', obliques: 'Obliques',
   lowerback: 'Spinal erectors', glutes: 'Glutes', quads: 'Quads',
-  hams: 'Hamstrings', calves: 'Calves',
+  hams: 'Hamstrings', calves: 'Calves', adductors: 'Adductors',
 };
+
+// Colours for muscle states (shared by setHighlight).
+const C_IDLE = new THREE.Color(0xb35e50);
+const C_PRIMARY = new THREE.Color(0xe8432a);
+const C_SECOND = new THREE.Color(0xe08a3c);
+const E_PRIMARY = new THREE.Color(0xff2e12);
+const E_SECOND = new THREE.Color(0xff8a1f);
+
+let FIBER = null;
+/** Procedural striated-muscle texture: fine fibres running along the belly. */
+function fiberTextures() {
+  if (FIBER) return FIBER;
+  const W = 512; const H = 512;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#d4d4d4';
+  g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 1400; i++) {
+    const x = Math.random() * W;
+    const l = Math.floor(165 + Math.random() * 90);
+    g.strokeStyle = `rgb(${l},${l},${l})`;
+    g.lineWidth = 0.6 + Math.random() * 1.8;
+    g.beginPath();
+    const amp = 2 + Math.random() * 4; const ph = Math.random() * 6;
+    for (let y = 0; y <= H; y += 16) g.lineTo(x + Math.sin(y / 70 + ph) * amp, y);
+    g.stroke();
+  }
+  // fascia sheen streaks
+  for (let i = 0; i < 40; i++) {
+    g.fillStyle = `rgba(255,255,255,${0.04 + Math.random() * 0.06})`;
+    g.fillRect(Math.random() * W, 0, 2 + Math.random() * 6, H);
+  }
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(3, 1);
+  map.anisotropy = 4;
+  const bump = new THREE.CanvasTexture(c);
+  bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
+  bump.repeat.set(3, 1);
+  FIBER = { map, bump };
+  return FIBER;
+}
 
 /** Shared material set. One material per muscle group so highlighting is cheap. */
 export function createMaterials({ ghost = false } = {}) {
   if (ghost) {
     const g = new THREE.MeshBasicMaterial({
-      color: 0x58d6ff, transparent: true, opacity: 0.11, depthWrite: false,
+      color: 0x58d6ff, transparent: true, opacity: 0.1, depthWrite: false,
     });
-    const mats = { body: g, joint: g, visor: g };
+    const mats = { skin: g, hair: g, nail: g, deep: g, tendon: g };
     MUSCLE_GROUPS.forEach((k) => (mats[k] = g));
     return mats;
   }
-  const body = new THREE.MeshPhysicalMaterial({
-    color: 0x3a4354, roughness: 0.4, metalness: 0.15,
-    clearcoat: 0.7, clearcoatRoughness: 0.28, sheen: 0.4, sheenColor: 0x3b4a66,
+  const { map, bump } = fiberTextures();
+  const skin = new THREE.MeshPhysicalMaterial({
+    color: 0xb88a72, roughness: 0.6, metalness: 0,
+    sheen: 0.45, sheenRoughness: 0.55, sheenColor: 0xe8a98c,
+    clearcoat: 0.08, emissive: 0x000000,
   });
-  const joint = body.clone();
-  joint.color = new THREE.Color(0x262c38);
-  const visor = new THREE.MeshStandardMaterial({
-    color: 0x0a0c10, emissive: 0x52d4ff, emissiveIntensity: 1.6, roughness: 0.2,
+  const hair = new THREE.MeshStandardMaterial({ color: 0x241a16, roughness: 0.85 });
+  const nail = skin;
+  // Deep muscle layer between the bellies, and pale tendon/fascia at joints.
+  const deep = new THREE.MeshPhysicalMaterial({
+    color: 0x86392f, map, bumpMap: bump, bumpScale: 1.2, roughness: 0.55,
+    clearcoat: 0.25, clearcoatRoughness: 0.4, sheen: 0.4, sheenColor: 0xff8f7a, emissive: 0x000000,
   });
-  const mats = { body, joint, visor };
+  const tendon = new THREE.MeshPhysicalMaterial({
+    color: 0x9a7f6d, roughness: 0.6, clearcoat: 0.1, clearcoatRoughness: 0.5,
+    sheen: 0.3, sheenColor: 0xf0d6c4, emissive: 0x000000,
+  });
+  const mats = { skin, hair, nail, deep, tendon };
   MUSCLE_GROUPS.forEach((k) => {
     mats[k] = new THREE.MeshPhysicalMaterial({
-      color: 0x566175, roughness: 0.34, metalness: 0.1,
-      clearcoat: 0.85, clearcoatRoughness: 0.2,
+      color: C_IDLE.clone(), map, bumpMap: bump, bumpScale: 1.6,
+      roughness: 0.48, metalness: 0,
+      clearcoat: 0.35, clearcoatRoughness: 0.35,
+      sheen: 0.6, sheenRoughness: 0.4, sheenColor: 0xff9f8f,
       emissive: 0x000000, emissiveIntensity: 1,
     });
   });
@@ -136,35 +243,29 @@ export class Rig {
     this.mats = mats;
     this.bones = {};
     this.markers = {};
-    this.muscleMeshes = [];
-    this.root = new THREE.Group();
+    this.parts = [];
+    this.object = new THREE.Group();
+    this.root = new THREE.Bone();
     this.root.name = 'root';
+    this.root.position.set(0, 1, 0);
     this.bones.root = this.root;
+    this.object.add(this.root);
     this._build();
-    this.root.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = !mats.body.transparent;
-        o.receiveShadow = !mats.body.transparent;
-      }
-    });
+    this._skin();
   }
 
   _bone(name, parent, pos) {
-    const g = new THREE.Group();
-    g.name = name;
-    g.position.set(...pos);
-    parent.add(g);
-    this.bones[name] = g;
-    return g;
+    const b = new THREE.Bone();
+    b.name = name;
+    b.position.set(...pos);
+    parent.add(b);
+    this.bones[name] = b;
+    return b;
   }
 
-  _mesh(geo, mat, parent, pos = [0, 0, 0], scale = [1, 1, 1], rot = [0, 0, 0]) {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(...pos);
-    m.scale.set(...scale);
-    m.rotation.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG);
-    parent.add(m);
-    return m;
+  /** Queue a body part (geometry in bone-local space) for skinning. */
+  _part(geo, mat, bone, pos = [0, 0, 0], scale = [1, 1, 1], rot = [0, 0, 0], extra = {}) {
+    this.parts.push({ geo, mat, bone, pos, scale, rot, ...extra });
   }
 
   _marker(name, parent, pos) {
@@ -178,115 +279,227 @@ export class Rig {
   _build() {
     const M = this.mats;
     const root = this.root;
+    const S = M.skin; const D = M.deep; const T = M.tendon;
 
     // --- Pelvis -------------------------------------------------------------
-    this._mesh(torsoGeo([[0, -0.13], [0.07, -0.125], [0.12, -0.08], [0.138, -0.02],
-      [0.136, 0.04], [0.125, 0.09], [0, 0.11]]), M.body, root, [0, 0, -0.005], [1, 1, 0.74]);
+    this._part(torsoGeo([[0, -0.13], [0.07, -0.124], [0.118, -0.08], [0.134, -0.02],
+      [0.13, 0.04], [0.12, 0.09], [0, 0.11]]), D, root, [0, 0, -0.005], [1, 1, 0.74]);
     this._marker('sacrum', root, [0, -0.02, -0.11]);
     this._marker('pelvis', root, [0, 0, 0]);
 
     // --- Lumbar / abdomen ---------------------------------------------------
     const spine = this._bone('spine', root, [0, 0.08, 0]);
-    this._mesh(torsoGeo([[0, -0.04], [0.118, -0.02], [0.118, 0.06], [0.12, 0.14],
-      [0.128, 0.2], [0, 0.23]]), M.body, spine, [0, 0, 0], [1, 1, 0.74]);
+    this._part(torsoGeo([[0, -0.04], [0.114, -0.02], [0.112, 0.06], [0.115, 0.14],
+      [0.124, 0.2], [0, 0.23]]), D, spine, [0, 0, 0], [1, 1, 0.72]);
     this._marker('lumbar', spine, [0, 0.03, -0.1]);
 
     // --- Thorax -------------------------------------------------------------
     const chest = this._bone('chest', spine, [0, 0.2, 0]);
-    this._mesh(torsoGeo([[0, -0.02], [0.128, 0.0], [0.14, 0.06], [0.158, 0.13],
-      [0.172, 0.2], [0.168, 0.25], [0.148, 0.29], [0.1, 0.318], [0.05, 0.332], [0, 0.338]]),
-    M.body, chest, [0, 0, -0.008], [1, 1, 0.64]);
+    this._part(torsoGeo([[0, -0.02], [0.124, 0.0], [0.136, 0.06], [0.152, 0.13],
+      [0.164, 0.2], [0.16, 0.25], [0.14, 0.29], [0.095, 0.318], [0.05, 0.332], [0, 0.338]]),
+    D, chest, [0, 0, -0.008], [1, 1, 0.62]);
+    // clavicles
+    for (const k of [1, -1]) {
+      this._part(SPHERE_LO, T, chest, [0.095 * k, 0.29, 0.05], [0.085, 0.012, 0.014], [0, 22 * k, -8 * k]);
+    }
     this._marker('upperBack', chest, [0, 0.17, -0.13]);
     this._marker('sternum', chest, [0, 0.16, 0.12]);
     this._marker('chestMid', chest, [0, 0.14, 0]);
 
     // --- Neck & head --------------------------------------------------------
     const neck = this._bone('neck', chest, [0, 0.305, -0.005]);
-    this._mesh(new THREE.CapsuleGeometry(0.048, 0.07, 8, 24), M.body, neck, [0, 0.04, 0]);
+    this._part(limbGeo(0.12, 0.05, 0.046, 0, 0.5), D, neck, [0, 0.11, 0]);
     const head = this._bone('head', neck, [0, 0.09, 0]);
-    this._mesh(SPHERE, M.body, head, [0, 0.1, 0.012], [0.094, 0.118, 0.106]);
-    this._mesh(new THREE.SphereGeometry(1, 40, 6, Math.PI / 2 - 0.95, 1.9, 1.38, 0.24),
-      M.visor, head, [0, 0.1, 0.012], [0.098, 0.122, 0.11]);
+    this._part(SPHERE, S, head, [0, 0.112, -0.006], [0.091, 0.108, 0.102]); // cranium
+    this._part(SPHERE, S, head, [0, 0.06, 0.035], [0.071, 0.075, 0.078]); // face mass
+    this._part(SPHERE_LO, S, head, [0, 0.02, 0.06], [0.05, 0.03, 0.045]); // jaw
+    this._part(SPHERE_LO, S, head, [0, 0.012, 0.09], [0.022, 0.02, 0.02]); // chin
+    this._part(SPHERE_LO, S, head, [0, 0.122, 0.078], [0.064, 0.014, 0.028]); // brow
+    this._part(SPHERE_LO, S, head, [0, 0.086, 0.106], [0.01, 0.022, 0.014], [-14, 0, 0]); // nose
+    for (const k of [1, -1]) {
+      this._part(SPHERE_LO, S, head, [0.089 * k, 0.09, 0.0], [0.012, 0.03, 0.02]); // ears
+    }
+    this._part(new THREE.SphereGeometry(1, 30, 14, 0, Math.PI * 2, 0, 1.35), M.hair, head,
+      [0, 0.118, -0.01], [0.095, 0.11, 0.106], [-14, 0, 0]);
     this._marker('headTop', head, [0, 0.22, 0.01]);
-    this._marker('eyes', head, [0, 0.12, 0.11]);
-    this._marker('chin', head, [0, 0.0, 0.07]);
+    this._marker('eyes', head, [0, 0.11, 0.11]);
+    this._marker('chin', head, [0, 0.0, 0.08]);
 
-    // --- Arms (built for both sides) ---------------------------------------
     for (const s of ['L', 'R']) {
       const k = s === 'L' ? 1 : -1;
+      // --- Arm ---------------------------------------------------------------
       const sh = this._bone('shoulder' + s, chest, [0.19 * k, 0.25, -0.01]);
-      this._mesh(limbGeo(0.29, 0.05, 0.04, 0.006, 0.32), M.body, sh);
+      this._part(limbGeo(0.3, 0.046, 0.036, 0.004, 0.32), D, sh, [0, 0.01, 0]);
       const el = this._bone('elbow' + s, sh, [0, -0.29, 0]);
-      this._mesh(SPHERE, M.joint, el, [0, 0, 0], [0.04, 0.04, 0.04]);
-      this._mesh(limbGeo(0.26, 0.043, 0.03, 0.008, 0.25), M.body, el);
+      this._part(limbGeo(0.265, 0.04, 0.026, 0.006, 0.22), D, el, [0, 0.01, 0]);
+      this._part(SPHERE_LO, T, el, [0, 0.0, -0.03], [0.022, 0.024, 0.016]); // olecranon
       const wr = this._bone('wrist' + s, el, [0, -0.26, 0]);
-      this._mesh(SPHERE, M.body, wr, [0, -0.055, 0.004], [0.032 + 0.0, 0.058, 0.026]);
+      // hand: palm, four curled fingers, thumb
+      this._part(SPHERE, S, wr, [0, -0.048, 0.002], [0.034 * 1, 0.05, 0.017]);
+      for (let f = 0; f < 4; f++) {
+        const fx = (0.024 - f * 0.016) * k;
+        const len = [0.04, 0.046, 0.044, 0.036][f];
+        this._part(new THREE.CapsuleGeometry(0.0085, len, 4, 10), S, wr,
+          [fx, -0.105, 0.01], [1, 1, 1], [-28, 0, 0]);
+      }
+      this._part(new THREE.CapsuleGeometry(0.0095, 0.04, 4, 10), S, wr,
+        [0.022 * k, -0.05, 0.026], [1, 1, 1], [-40, 0, -25 * k]);
       this._marker('hand' + s, wr, [0, -0.07, 0.0]);
       this._marker('palm' + s, wr, [0, -0.07, 0.025]);
 
-      // --- Legs ---------------------------------------------------------------
+      // --- Leg ---------------------------------------------------------------
       const hip = this._bone('hip' + s, root, [0.095 * k, -0.06, 0]);
-      this._mesh(limbGeo(0.44, 0.088, 0.055, 0.008, 0.25), M.body, hip);
+      this._part(limbGeo(0.45, 0.082, 0.05, 0.006, 0.25), D, hip, [0, 0.01, 0]);
       const kn = this._bone('knee' + s, hip, [0, -0.44, 0]);
-      this._mesh(SPHERE, M.joint, kn, [0, 0, 0.012], [0.056, 0.06, 0.056]);
-      this._mesh(limbGeo(0.42, 0.054, 0.034, 0.012, 0.22), M.body, kn);
+      this._part(SPHERE_LO, T, kn, [0, 0.0, 0.046], [0.03, 0.034, 0.018]); // patella
+      this._part(limbGeo(0.43, 0.05, 0.03, 0.008, 0.22), D, kn, [0, 0.01, 0]);
       this._marker('kneeCap' + s, kn, [0, 0, 0.06]);
       const an = this._bone('ankle' + s, kn, [0, -0.42, 0]);
-      this._mesh(new THREE.CapsuleGeometry(0.04, 0.17, 8, 20), M.body, an,
-        [0, -0.035, 0.06], [1.1, 0.8, 1], [90, 0, 0]);
+      // foot: heel, arch, toe box
+      this._part(SPHERE, S, an, [0, -0.04, -0.02], [0.036, 0.03, 0.045]);
+      this._part(SPHERE, S, an, [0, -0.04, 0.06], [0.044, 0.028, 0.085], [-6, 0, 0]);
+      this._part(SPHERE, S, an, [0.004 * k, -0.05, 0.145], [0.046, 0.018, 0.035]);
+      this._part(SPHERE_LO, T, an, [0.03 * k, -0.012, 0.0], [0.012, 0.016, 0.014]); // malleolus
       this._marker('heel' + s, an, [0, -0.067, -0.05]);
       this._marker('toe' + s, an, [0, -0.067, 0.175]);
       this._marker('ball' + s, an, [0, -0.067, 0.12]);
       this._marker('instep' + s, an, [0, 0.0, 0.08]);
     }
 
-    // --- Muscles ------------------------------------------------------------
-    for (const [group, bone, pos, scale, rot, mirror] of MUSCLES) {
-      const sides = mirror ? ['L', 'R'] : [''];
-      for (const s of sides) {
+    // --- Muscles (mirrored) ----------------------------------------------------
+    const SIDED = ['shoulder', 'elbow', 'hip', 'knee', 'wrist', 'ankle'];
+    for (const [group, bone, pos, scale, rot, bulge] of MUSCLES) {
+      for (const s of ['L', 'R']) {
         const k = s === 'R' ? -1 : 1;
-        const boneName = ['shoulder', 'elbow', 'hip', 'knee'].includes(bone) ? bone + s : bone;
-        const parent = this.bones[boneName];
-        const p = [...pos];
-        const r = [...rot];
-        if (['shoulder', 'elbow', 'hip', 'knee'].includes(bone)) {
-          p[0] = pos[0] * k;
-          r[1] *= k; r[2] *= k;
-        } else {
-          p[0] = pos[0] * k;
-          r[1] *= k; r[2] *= k;
-        }
-        const m = this._mesh(SPHERE, this.mats[group], parent, p, scale, r);
-        m.userData = { group, baseScale: m.scale.clone(), side: s };
-        this.muscleMeshes.push(m);
+        const boneName = SIDED.includes(bone) ? bone + s : bone;
+        this._part(SPHERE, this.mats[group], this.bones[boneName],
+          [pos[0] * k, pos[1], pos[2]], [scale[0] * 1.1, scale[1] * 1.05, scale[2] * 1.08], [rot[0], rot[1] * k, rot[2] * k],
+          { group, bulge });
       }
     }
   }
 
+  /** Bake parts into bind space, compute skin weights, merge per material. */
+  _skin() {
+    this.object.updateMatrixWorld(true);
+    const boneList = Object.values(this.bones);
+    const idx = new Map(boneList.map((b, i) => [b.name, i]));
+    this.skeleton = new THREE.Skeleton(boneList);
+
+    const byMat = new Map();
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const a = new THREE.Vector3(); const b = new THREE.Vector3();
+    const ab = new THREE.Vector3(); const v = new THREE.Vector3(); const n = new THREE.Vector3();
+
+    for (const p of this.parts) {
+      const g = p.geo.clone();
+      const pos0 = g.attributes.position;
+      const count = pos0.count;
+      const prof = p.bulge ? new Float32Array(count) : null;
+      if (prof) for (let i = 0; i < count; i++) prof[i] = Math.max(0, 1 - Math.abs(pos0.getY(i)) * 1.15);
+
+      e.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
+      q.setFromEuler(e);
+      m4.compose(new THREE.Vector3(...p.pos), q, new THREE.Vector3(...p.scale));
+      m4.premultiply(p.bone.matrixWorld);
+      g.applyMatrix4(m4);
+      if (g.attributes.normal) g.normalizeNormals();
+
+      const base = p.bone.name.replace(/[LR]$/, '');
+      const side = p.bone.name.length > base.length ? p.bone.name.slice(-1) : '';
+      const cfg = BLEND[base];
+      p.bone.getWorldPosition(a);
+      b.set(...cfg.seg); p.bone.localToWorld(b);
+      ab.subVectors(b, a);
+      const L2 = ab.lengthSq();
+      const own = idx.get(p.bone.name);
+      const par = cfg.parent ? idx.get(cfg.parent[0] + (SIDE_JOINTS.includes(cfg.parent[0]) ? side : '')) : 0;
+      const chi = cfg.child ? idx.get(cfg.child[0] + (SIDE_JOINTS.includes(cfg.child[0]) ? side : '')) : 0;
+
+      const si = new Uint16Array(count * 4);
+      const sw = new Float32Array(count * 4);
+      const P = g.attributes.position;
+      for (let i = 0; i < count; i++) {
+        v.fromBufferAttribute(P, i);
+        const t = v.sub(a).dot(ab) / L2;
+        const s = cfg.parent ? smooth(-cfg.parent[1], cfg.parent[1], t) : 1;
+        const c = cfg.child ? smooth(1 - cfg.child[1], 1 + cfg.child[1], t) : 0;
+        let wp = 1 - s;
+        if (cfg.parent?.[2] != null) wp = Math.min(wp, cfg.parent[2]);
+        const wc = (1 - wp) * c;
+        const wo = Math.max(0, 1 - wp - wc);
+        si.set([own, par, chi, 0], i * 4);
+        sw.set([wo, wp, wc, 0], i * 4);
+      }
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+      g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+
+      // Contraction morph: push the belly outward along its normal.
+      const disp = new Float32Array(count * 3);
+      if (prof) {
+        const N = g.attributes.normal;
+        for (let i = 0; i < count; i++) {
+          n.fromBufferAttribute(N, i).multiplyScalar(p.bulge * prof[i]);
+          disp.set([n.x, n.y, n.z], i * 3);
+        }
+      }
+      g.userData.disp = disp;
+      g.userData.hasBulge = !!prof;
+      for (const k of Object.keys(g.attributes)) {
+        if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(k)) g.deleteAttribute(k);
+      }
+      if (!byMat.has(p.mat)) byMat.set(p.mat, { geos: [], groups: new Set() });
+      const entry = byMat.get(p.mat);
+      entry.geos.push(g);
+      if (p.group) entry.groups.add(p.group);
+    }
+
+    this.meshes = [];
+    this.groupMesh = {};
+    const ghost = !!this.mats.skin.transparent;
+    for (const [mat, { geos, groups }] of byMat) {
+      const bulgy = !ghost && geos.some((g) => g.userData.hasBulge);
+      const merged = mergeGeometries(geos, false);
+      if (bulgy) {
+        const total = geos.reduce((s, g) => s + g.userData.disp.length, 0);
+        const d = new Float32Array(total);
+        let o = 0;
+        for (const g of geos) { d.set(g.userData.disp, o); o += g.userData.disp.length; }
+        merged.morphAttributes.position = [new THREE.Float32BufferAttribute(d, 3)];
+        merged.morphTargetsRelative = true;
+      }
+      const mesh = new THREE.SkinnedMesh(merged, mat);
+      mesh.bind(this.skeleton);
+      mesh.frustumCulled = false;
+      mesh.castShadow = !ghost;
+      mesh.receiveShadow = !ghost;
+      this.object.add(mesh);
+      this.meshes.push(mesh);
+      for (const gname of groups) this.groupMesh[gname] = mesh;
+    }
+    this.parts = null;
+  }
+
   /**
    * Apply an expanded pose: { joint: [x,y,z] degrees }.
-   * Also "flexes" muscle bellies as the joints they cross bend.
+   * Also contracts muscle bellies as the joints they cross bend.
    */
   applyPose(pose) {
     for (const name of ALL_JOINTS) {
       const b = this.bones[name];
       const a = pose[name] || REST[name] || [0, 0, 0];
-      if (name === 'root') {
-        b.rotation.set(a[0] * DEG, a[1] * DEG, a[2] * DEG, 'YXZ');
-      } else {
-        b.rotation.set(a[0] * DEG, a[1] * DEG, a[2] * DEG, 'XYZ');
-      }
+      b.rotation.set(a[0] * DEG, a[1] * DEG, a[2] * DEG, name === 'root' ? 'YXZ' : 'XYZ');
     }
-    // Muscle bulge: biceps grow with elbow flexion, quads/glutes with load, etc.
-    for (const m of this.muscleMeshes) {
-      const { group, baseScale, side } = m.userData;
-      let f = 0;
-      if (group === 'biceps') f = Math.max(0, -(pose['elbow' + side]?.[0] ?? 0)) / 140;
-      else if (group === 'triceps') f = Math.max(0, 1 - Math.max(0, -(pose['elbow' + side]?.[0] ?? 0)) / 120) * 0.4;
-      else if (group === 'hams') f = Math.max(0, pose['knee' + side]?.[0] ?? 0) / 160;
-      else if (group === 'calves') f = Math.max(0, pose['ankle' + side]?.[0] ?? 0) / 50;
-      m.scale.set(baseScale.x * (1 + f * 0.28), baseScale.y * (1 - f * 0.12), baseScale.z * (1 + f * 0.32));
-    }
+    const avg = (j, i, sign) => Math.max(0, sign * ((pose[j + 'L']?.[i] ?? 0) + (pose[j + 'R']?.[i] ?? 0)) / 2);
+    const set = (g, f) => {
+      const m = this.groupMesh[g];
+      if (m?.morphTargetInfluences) m.morphTargetInfluences[0] = Math.min(1, f);
+    };
+    set('biceps', avg('elbow', 0, -1) / 120);
+    set('hams', avg('knee', 0, 1) / 140);
+    set('calves', avg('ankle', 0, 1) / 45);
   }
 
   /** World position of a bone or marker (supports "mid:a,b,c"). */
@@ -304,27 +517,27 @@ export class Rig {
   }
 
   setHighlight(primary = [], secondary = [], intensity = 1, faultTint = 0) {
-    const P = new THREE.Color(0xff4f2b);
-    const S = new THREE.Color(0xffa63d);
     for (const g of MUSCLE_GROUPS) {
       const mat = this.mats[g];
       if (!mat.emissive) continue;
       if (primary.includes(g)) {
-        mat.emissive.copy(P);
-        mat.emissiveIntensity = 0.35 + 1.25 * intensity;
-        mat.color.setHex(0x8a3a2c);
+        mat.color.copy(C_PRIMARY);
+        mat.emissive.copy(E_PRIMARY);
+        mat.emissiveIntensity = 0.08 + 0.5 * intensity;
       } else if (secondary.includes(g)) {
-        mat.emissive.copy(S);
-        mat.emissiveIntensity = 0.15 + 0.45 * intensity;
-        mat.color.setHex(0x7a5a32);
+        mat.color.copy(C_SECOND);
+        mat.emissive.copy(E_SECOND);
+        mat.emissiveIntensity = 0.04 + 0.16 * intensity;
       } else {
+        mat.color.copy(C_IDLE);
         mat.emissive.setHex(0x000000);
-        mat.color.setHex(0x566175);
       }
     }
-    if (this.mats.body.emissive) {
-      this.mats.body.emissive.setHex(0xff1a1a);
-      this.mats.body.emissiveIntensity = faultTint * 0.12;
+    for (const k of ['skin', 'deep', 'tendon']) {
+      const m = this.mats[k];
+      if (!m.emissive) continue;
+      m.emissive.setHex(0xff1a1a);
+      m.emissiveIntensity = faultTint * 0.14;
     }
   }
 }
