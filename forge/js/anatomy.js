@@ -46,6 +46,27 @@ export function chooseLOD() {
   return coarse || small || cores <= 4 || mem <= 4 ? 'economy' : 'standard';
 }
 
+/**
+ * Fetch a GLB. Hosts that cannot serve binary glTF get a base64 text copy
+ * next to it (`<name>.glb.b64.txt`), which is decoded here.
+ */
+async function fetchModel(url) {
+  try {
+    const r = await fetch(url);
+    const type = r.headers.get('content-type') || '';
+    if (r.ok && !type.includes('text/html')) {
+      const buf = await r.arrayBuffer();
+      if (new Uint32Array(buf, 0, 1)[0] === 0x46546c67) return buf; // 'glTF' magic
+    }
+  } catch { /* fall through to the text copy */ }
+  const t = await fetch(url + '.b64.txt');
+  if (!t.ok) throw new Error('anatomy model not found: ' + url);
+  const bin = atob((await t.text()).trim());
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
 const cache = new Map();
 /** Load (and cache) GLB + metadata for a quality level. */
 export function loadAnatomyAssets(base, lod) {
@@ -53,10 +74,11 @@ export function loadAnatomyAssets(base, lod) {
   if (cache.has(key)) return cache.get(key);
   const p = (async () => {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-    const [gltf, meta] = await Promise.all([
-      loader.loadAsync(`${base}/anatomy-${lod}.glb`),
+    const [buffer, meta] = await Promise.all([
+      fetchModel(`${base}/anatomy-${lod}.glb`),
       fetch(`${base}/anatomy.json`).then((r) => r.json()),
     ]);
+    const gltf = await loader.parseAsync(buffer, `${base}/`);
     gltf.scene.updateMatrixWorld(true);
     const meshes = {};
     gltf.scene.traverse((o) => {
