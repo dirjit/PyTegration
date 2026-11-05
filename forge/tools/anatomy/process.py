@@ -190,6 +190,10 @@ for _s in ("L", "R"):
     for _f in range(1, 6):
         for _j in range(1, 4):
             SEGS.append(f"f{_f}{_s}{_j}")
+# forearm twist segments (pronation/supination is shared along the forearm)
+for _s in ("L", "R"):
+    for _k in (1, 2, 3):
+        SEGS.append(f"tw{_k}{_s}")
 PARENT = {
     "spine": "root",
     "chest": "spine",
@@ -215,6 +219,8 @@ for _s in ("L", "R"):
         PARENT[f"f{_f}{_s}1"] = "wrist" + _s
         PARENT[f"f{_f}{_s}2"] = f"f{_f}{_s}1"
         PARENT[f"f{_f}{_s}3"] = f"f{_f}{_s}2"
+    for _k in (1, 2, 3):
+        PARENT[f"tw{_k}{_s}"] = "elbow" + _s
 SI = {s: i for i, s in enumerate(SEGS)}
 NEIGH = {s: {s} for s in SEGS}
 for c, p in PARENT.items():
@@ -386,6 +392,32 @@ for s in ("L", "R"):
             FINGERS[seg] = {"axis": np.round(axis, 4).tolist(), "dir": np.round(d, 4).tolist()}
     mcp = np.mean([J[f"f{f}{s}1"] for f in range(2, 6)], axis=0)
     J["grip" + s] = 0.5 * (mc.mean(0) + mcp) + palm_n * 0.018
+for s in ("L", "R"):
+    for k in (1, 2, 3):
+        J[f"tw{k}{s}"] = J["elbow" + s] + (J["wrist" + s] - J["elbow" + s]) * k / 4
+
+
+def split_forearm(v, W):
+    """Spread elbow-segment weight along the forearm: elbow, tw1-3, wrist."""
+    for s in ("L", "R"):
+        e = SI["elbow" + s]
+        we = W[:, e].copy()  # copy: the column is zeroed below
+        if not we.any():
+            continue
+        ax = J["wrist" + s] - J["elbow" + s]
+        ln = np.linalg.norm(ax)
+        t = np.clip(((v - J["elbow" + s]) @ ax) / (ln * ln), 0, 1)
+        knots = [e, SI[f"tw1{s}"], SI[f"tw2{s}"], SI[f"tw3{s}"], SI["wrist" + s]]
+        k = np.minimum((t * 4).astype(int), 3)
+        f = t * 4 - k
+        W[:, e] = 0
+        for i in range(4):
+            sel = k == i
+            W[sel, knots[i]] += we[sel] * (1 - f[sel])
+            W[sel, knots[i + 1]] += we[sel] * f[sel]
+    return W
+
+
 missing = [sg for sg in SEGS if sg not in J]
 if missing:
     raise SystemExit(f"missing joints {missing}")
@@ -443,7 +475,10 @@ def top4(W):
     order = np.argsort(-W, axis=1)[:, :4]
     w = np.take_along_axis(W, order, 1)
     w[w < 0.01] = 0
-    w /= w.sum(1, keepdims=True)
+    tot = w.sum(1, keepdims=True)
+    if (tot <= 0).any() or not np.isfinite(tot).all():
+        raise SystemExit("vertex with no skin weight")
+    w /= tot
     return order.astype(np.uint8), w.astype(np.float32)
 
 
@@ -520,7 +555,14 @@ for e in idx:
         "side": side(e["id"]),
         "parent": parent(e["id"]),
     }
-    if cls == "bone":
+    if cls == "bone" and e["seg"].startswith("elbow"):
+        # radius and ulna twist with the forearm
+        seg = e["seg"]
+        Wd = np.zeros((len(v), len(SEGS)))
+        Wd[:, SI[seg]] = 1
+        j, w = top4(split_forearm(v, Wd))
+        rec["seg"] = seg
+    elif cls == "bone":
         seg = e["seg"]
         j = np.zeros((len(v), 4), np.uint8)
         j[:, 0] = SI[seg]
@@ -534,7 +576,7 @@ for e in idx:
     else:
         near_hand = verts(e)[:, 1].mean() < 0.95 and abs(verts(e)[:, 0].mean()) > 0.2
         W = soft_weights(e, smooth_iters=3 if cls == "digits" or near_hand else 8)
-        j, w = top4(W)
+        j, w = top4(split_forearm(v, W))
         rec["seg"] = SEGS[int(np.bincount(j[:, 0], minlength=len(SEGS)).argmax())]
     F = np.zeros((len(v), 3), np.float32)
     M = np.zeros((len(v), 4), np.float32)

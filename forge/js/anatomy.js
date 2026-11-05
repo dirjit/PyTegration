@@ -37,6 +37,10 @@ const MESHES = ['muscle', 'fascia', 'bone', 'eye', 'digits'];
 // Thumb: CMC opposition, MCP, IP. Real ranges, scaled by the grip amount.
 const FINGER_MAX = { 1: [38, 45, 50], 2: [78, 96, 58], 3: [82, 100, 60], 4: [84, 100, 58], 5: [86, 98, 56] };
 const RELAXED_GRIP = 0.18;
+// Forearm rotation from the atlas' palms-forward (fully supinated) pose:
+// 0 = palms forward, 90 = neutral (palms facing the thighs), 160-180 = pronated.
+const NEUTRAL_PRONATION = 90;
+const TWIST_FRAC = { tw1: 0.25, tw2: 0.5, tw3: 0.75 };
 const STATE_W = 1024;
 
 export const ANATOMY_CREDIT = 'Anatomy: Z-Anatomy (CC BY-SA 4.0), based on BodyParts3D © DBCLS (CC BY 4.0); adapted for FORGE.';
@@ -322,6 +326,7 @@ export class AnatomyRig {
     for (const sd of ['L', 'R']) {
       this.Ainv['shoulder' + sd] = new THREE.Quaternion().setFromUnitVectors(down, dirOf('shoulder' + sd, 'elbow' + sd)).invert();
       this.Ainv['elbow' + sd] = sagittal(dirOf('elbow' + sd, 'wrist' + sd)).invert();
+      for (const k of [1, 2, 3]) if (this.Ainv['tw' + k + sd]) this.Ainv['tw' + k + sd] = this.Ainv['elbow' + sd].clone();
       this.Ainv['hip' + sd] = sagittal(dirOf('hip' + sd, 'knee' + sd)).invert();
       this.Ainv['knee' + sd] = sagittal(dirOf('knee' + sd, 'ankle' + sd)).invert();
     }
@@ -344,6 +349,7 @@ export class AnatomyRig {
     for (let i = 0; i < STATE_W; i++) this.state[i * 4 + 2] = 1; // visible
     meta.structures.forEach((s, i) => { if (/iris/i.test(s.name) || s.nail) this.state[i * 4 + 3] = 1; });
     this.grip = RELAXED_GRIP;
+    this.pronation = NEUTRAL_PRONATION;
     this.fingerQ = {};
     for (const [seg, f] of Object.entries(meta.fingers || {})) this.fingerQ[seg] = { axis: new THREE.Vector3(...f.axis), digit: +seg[1], joint: +seg[3] };
     this.stateTex = new THREE.DataTexture(this.state, STATE_W, 1, THREE.RGBAFormat, THREE.FloatType);
@@ -416,6 +422,17 @@ export class AnatomyRig {
       R['scap' + sd] = sc;
       R['shoulder' + sd] = sc.clone().invert().multiply(sh);
     }
+    // forearm rotation: shared by the twist bones, completed at the wrist
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const sd of ['L', 'R']) {
+      const sign = sd === 'L' ? -1 : 1;
+      for (const [tw, frac] of Object.entries(TWIST_FRAC)) {
+        if (this.bones[tw + sd]) R[tw + sd] = new THREE.Quaternion().setFromAxisAngle(up, sign * this.pronation * frac * DEG);
+      }
+      if (this.bones['tw1' + sd]) {
+        R['wrist' + sd] = new THREE.Quaternion().setFromAxisAngle(up, sign * this.pronation * DEG).multiply(R['wrist' + sd]);
+      }
+    }
     // fingers: curl toward the palm about each finger's own flexion axis
     for (const [seg, f] of Object.entries(this.fingerQ)) {
       const deg = FINGER_MAX[f.digit][f.joint - 1] * this.grip;
@@ -431,6 +448,9 @@ export class AnatomyRig {
       else b.quaternion.copy(G[s]);
     }
   }
+
+  /** Forearm rotation in degrees from the palms-forward atlas pose. */
+  setPronation(deg) { this.pronation = deg; }
 
   /** 0 = fingers straight (palm flat), 1 = full grip around a bar. */
   setGrip(v) { this.grip = THREE.MathUtils.clamp(v, 0, 1); }

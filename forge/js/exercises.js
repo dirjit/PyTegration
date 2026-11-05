@@ -17,6 +17,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'elbow',
+    pron: 0,
     grip: 0.55,
     name: 'Elbow Flexion',
     pattern: 'Anatomy demo · biceps vs triceps',
@@ -59,6 +60,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'pushup',
+    pron: 175,
     grip: 0.0,
     name: 'Push-Up',
     pattern: 'Horizontal push',
@@ -69,8 +71,8 @@ export const EXERCISES = [
     anchor: { point: 'mid:toeL,toeR', target: [0, 0, -0.75], second: { point: HANDS, y: 0.03 } },
     ik: { joints: ['shoulder', 'shoulder'], axes: [0, 1], point: 'handL', dims: ['z', 'x'] },
     poses: [
-      { root: [78], neck: [6], shoulder: [-63, 0, 18], elbow: [-3], wrist: [-102], ankle: [6] },
-      { root: [89], neck: [8], spine: [-2], shoulder: [10, 0, 38], elbow: [-96], wrist: [-80], ankle: [8] },
+      { root: [78], neck: [6], shoulder: [-63, 0, 18], elbow: [-3], wrist: [102], ankle: [6] },
+      { root: [89], neck: [8], spine: [-2], shoulder: [10, 0, 38], elbow: [-96], wrist: [93], ankle: [8] },
     ],
     tempo: [
       { label: 'Lower', dur: 3, from: 0, to: 1, tension: 0.9 },
@@ -111,6 +113,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'pullup',
+    pron: 170,
     grip: 0.92,
     name: 'Pull-Up',
     pattern: 'Vertical pull',
@@ -163,6 +166,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'pike',
+    pron: 175,
     grip: 0.0,
     name: 'Pike Push-Up',
     pattern: 'Vertical push',
@@ -173,8 +177,8 @@ export const EXERCISES = [
     anchor: { point: 'mid:toeL,toeR', target: [0, 0, -0.6], second: { point: HANDS, y: 0.03 } },
     ik: { joints: 'shoulder', point: HANDS },
     poses: [
-      { root: [132], neck: [-6], shoulder: [-132, 0, 18], elbow: [-3], wrist: [-85], hip: [-96], ankle: [18] },
-      { root: [146], neck: [-14], shoulder: [-100, 0, 30], elbow: [-88], wrist: [-60], hip: [-106], ankle: [20] },
+      { root: [132], neck: [-6], shoulder: [-132, 0, 18], elbow: [-3], wrist: [87], hip: [-96], ankle: [18] },
+      { root: [146], neck: [-14], shoulder: [-100, 0, 30], elbow: [-88], wrist: [48], hip: [-106], ankle: [20] },
     ],
     tempo: [
       { label: 'Lower', dur: 2.6, from: 0, to: 1, tension: 0.9 },
@@ -212,6 +216,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'dip',
+    pron: 90,
     grip: 0.7,
     name: 'Parallel Bar Dip',
     pattern: 'Vertical push',
@@ -261,6 +266,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'row',
+    pron: 170,
     grip: 0.92,
     name: 'Inverted Row',
     pattern: 'Horizontal pull',
@@ -308,6 +314,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'bss',
+    pron: 90,
     grip: 0.88,
     name: 'Bulgarian Split Squat',
     pattern: 'Single-leg squat',
@@ -362,6 +369,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'rdl',
+    pron: 90,
     grip: 0.88,
     name: 'Romanian Deadlift',
     pattern: 'Hip hinge',
@@ -414,6 +422,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'lateral',
+    pron: 90,
     grip: 0.88,
     name: 'Lateral Raise',
     pattern: 'Shoulder isolation',
@@ -460,6 +469,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'legraise',
+    pron: 170,
     grip: 0.92,
     name: 'Hanging Leg Raise',
     pattern: 'Core flexion',
@@ -506,6 +516,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'hollow',
+    pron: 90,
     grip: 0.15,
     name: 'Hollow Body Hold',
     pattern: 'Anti-extension core',
@@ -556,6 +567,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'bridge',
+    pron: 175,
     grip: 0.08,
     name: 'Single-Leg Glute Bridge',
     pattern: 'Hip extension',
@@ -605,6 +617,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'swing',
+    pron: 170,
     grip: 0.9,
     name: 'Kettlebell Swing',
     pattern: 'Ballistic hinge · conditioning',

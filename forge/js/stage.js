@@ -466,6 +466,8 @@ export class Stage {
       : this.poses;
     this.cycle = ex.tempo.reduce((s, seg) => s + seg.dur, 0);
     if (this.rig.setGrip) this.rig.setGrip(ex.grip ?? 0.18);
+    if (this.rig.setPronation) this.rig.setPronation(ex.pron ?? 90);
+    this.ghosts.forEach((g) => g.setPronation?.(ex.pron ?? 90));
     this.ghosts.forEach((g) => g.setGrip?.(ex.grip ?? 0.18));
     if (!keepTime) { this.time = 0; this.rep = 0; }
     this.traceHistory = [];
