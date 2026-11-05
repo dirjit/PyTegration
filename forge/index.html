@@ -22,7 +22,7 @@
 <body>
   <nav class="nav" id="nav">
     <a class="brand" href="#top"><span class="brand-mark"></span>FORGE</a>
-    <div class="nav-links">
+    <div class="nav-links" id="navLinks">
       <a href="#method">Method</a>
       <a href="#lab">Form Lab</a>
       <a href="#program">Program</a>
@@ -30,6 +30,7 @@
       <a href="#notes">Field Notes</a>
       <a href="#tracker">Tracker</a>
     </div>
+    <button class="nav-menu" id="navMenu" aria-expanded="false" aria-controls="navLinks">Menu</button>
     <button class="btn btn-sm" id="navStart">Start Session A</button>
   </nav>
 
@@ -81,8 +82,9 @@
             <div>
               <div class="hud-pattern" id="hudPattern"></div>
               <div class="hud-name" id="hudName"></div>
-            </div>
-            <div class="phase-pill" id="phasePill"><span class="dot"></span><span id="phaseName">—</span></div>
+              <div class="fault-banner" id="faultBanner" hidden></div>
+                </div>
+            <div class="phase-pill" id="phasePill"><span class="dot"></span><span id="phaseName" aria-live="polite">—</span></div>
           </div>
           <div class="hud hud-views" id="viewBtns">
             <button data-view="front">Front</button>
@@ -92,14 +94,13 @@
             <button data-view="top">Top</button>
           </div>
           <div class="hud hud-legend" id="legend"></div>
-          <div class="fault-banner" id="faultBanner" hidden></div>
           <div class="session-hud" id="sessionHud" hidden></div>
           <div class="loading" id="labLoading">Building the mannequin…</div>
         </div>
 
         <div class="controls">
           <button class="icon-btn" id="playBtn" aria-label="Pause">❚❚</button>
-          <div class="timeline" id="timeline">
+          <div class="timeline" id="timeline" role="slider" tabindex="0" aria-label="Rep timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div class="tl-segs" id="tlSegs"></div>
             <div class="tl-head" id="tlHead"></div>
           </div>
@@ -114,22 +115,30 @@
             </select>
           </label>
         </div>
+        <div class="layer-row">
+          <span class="layer-label">Anatomy layer</span>
+          <div class="layer-seg" id="layerSeg" role="radiogroup" aria-label="Anatomy layer">
+            <button role="radio" aria-checked="false" data-layer="skin">Skin</button>
+            <button role="radio" aria-checked="true" class="on" data-layer="superficial">Superficial muscles</button>
+            <button role="radio" aria-checked="false" data-layer="deep">Deep muscles</button>
+          </div>
+        </div>
         <div class="toggles" id="toggles">
-          <button class="chip on" data-t="angles">Joint angles</button>
-          <button class="chip on" data-t="line">Alignment line</button>
-          <button class="chip on" data-t="trace">Motion path</button>
-          <button class="chip" data-t="ghosts">Range ghosts</button>
-          <button class="chip chip-bad" data-t="fault">Mistake mode</button>
+          <button class="chip on" aria-pressed="true" data-t="angles">Joint angles</button>
+          <button class="chip on" aria-pressed="true" data-t="line">Alignment line</button>
+          <button class="chip on" aria-pressed="true" data-t="trace">Motion path</button>
+          <button class="chip" aria-pressed="false" data-t="ghosts">Range ghosts</button>
+          <button class="chip chip-bad" aria-pressed="false" data-t="fault">Mistake mode</button>
         </div>
       </div>
 
       <div class="details">
         <div class="presc" id="presc"></div>
         <div class="tabs" role="tablist" id="tabs">
-          <button class="tab on" data-tab="cues">Form cues</button>
-          <button class="tab" data-tab="mistakes">Mistakes</button>
-          <button class="tab" data-tab="breathing">Breath</button>
-          <button class="tab" data-tab="progressions">Progressions</button>
+          <button class="tab on" role="tab" aria-selected="true" data-tab="cues">Form cues</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="mistakes">Mistakes</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="breathing">Breath</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="progressions">Progressions</button>
         </div>
         <div class="tab-body" id="tabBody"></div>
         <div class="insight" id="insight"></div>
@@ -204,8 +213,8 @@
         <p class="sub">Shoulder circumference ÷ waist (at the navel). The “golden” physique sits near <strong>1.6</strong>. Track this instead of obsessing over weight.</p>
       </div>
       <div class="ratio-tool">
-        <label>Shoulders <input type="number" id="shoulders" value="118" step="0.5"></label>
-        <label>Waist <input type="number" id="waist" value="86" step="0.5"></label>
+        <label>Shoulders (cm or in) <input type="number" id="shoulders" value="118" step="0.5"></label>
+        <label>Waist (same unit) <input type="number" id="waist" value="86" step="0.5"></label>
         <div class="ratio-out" id="ratioOut"></div>
       </div>
       <div class="ratio-bar"><div class="ratio-fill" id="ratioFill"></div><span class="ratio-mark" style="left:75%">1.6</span></div>

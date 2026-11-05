@@ -29,6 +29,9 @@ const ease = {
   lin: (t) => t,
   // explosive concentric: fast start, gentle finish
   snap: (t) => 1 - Math.pow(1 - t, 4),
+  // concentric drive: zero velocity at both ends, peak early (t = 1/3)
+  drive: (t) => 1 - Math.pow(1 - t, 3) * (1 + 3 * t),
+  driveIn: (t) => t * t * t * (4 - 3 * t),
 };
 
 // -----------------------------------------------------------------------------
@@ -187,8 +190,8 @@ export class Stage {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.opts.pixelRatio || 2));
     renderer.setSize(w, h);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
@@ -199,7 +202,7 @@ export class Stage {
     scene.fog = new THREE.Fog(0x0a0d13, 8, 18);
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.6;
+    scene.environmentIntensity = 0.9;
     this.scene = scene;
 
     const camera = new THREE.PerspectiveCamera(this.opts.hero ? 32 : 36, w / h, 0.05, 60);
@@ -250,7 +253,7 @@ export class Stage {
     // Post-processing: subtle bloom so active muscles and the visor glow.
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.5, 0.86);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.25, 0.5, 0.97);
     composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
     this.composer = composer;
@@ -270,7 +273,7 @@ export class Stage {
 
   _lights() {
     const s = this.scene;
-    s.add(new THREE.HemisphereLight(0xb7c4dc, 0x1a1210, 0.75));
+    s.add(new THREE.HemisphereLight(0xb7c4dc, 0x1a1210, 0.5));
     const key = new THREE.DirectionalLight(0xfff1e0, 3.4);
     key.position.set(2.5, 5, 3.2);
     key.castShadow = true;
@@ -279,13 +282,13 @@ export class Stage {
     key.shadow.camera.top = 3.2; key.shadow.camera.bottom = -1.5;
     key.shadow.camera.near = 0.5; key.shadow.camera.far = 14;
     key.shadow.bias = -0.0004;
-    key.shadow.normalBias = 0.02;
+    key.shadow.normalBias = 0.006;
     key.shadow.radius = 4;
     s.add(key);
-    const rimC = new THREE.DirectionalLight(0x4cc9f0, 2.2);
+    const rimC = new THREE.DirectionalLight(0xfff2e6, 1.4);
     rimC.position.set(-4, 2.6, -3);
     s.add(rimC);
-    const rimW = new THREE.DirectionalLight(0xff7a45, 1.6);
+    const rimW = new THREE.DirectionalLight(0x9fc7ff, 0.6);
     rimW.position.set(4, 1.8, -3.5);
     s.add(rimW);
     const fill = new THREE.PointLight(0x9fb4ff, 6, 8, 2);
@@ -406,7 +409,7 @@ export class Stage {
         const dims = t.dims || ['z'];
         const p0 = r.world(t.point);
         return {
-          joints, dims, point: t.point,
+          joints, dims, point: t.point, axes: t.axes || joints.map(() => 0),
           names: joints.map((j) => (SIDE_JOINTS.includes(j) ? [j + 'L', j + 'R'] : [j])),
           target: dims.map((d) => p0[d]),
         };
@@ -480,6 +483,10 @@ export class Stage {
     this.ghosts.forEach((g) => (g.object.visible = this.toggles.ghosts && !!this.ex));
   }
 
+  setLayer(mode) {
+    this.rig.setLayer(mode);
+  }
+
   setToggle(k, v) {
     this.toggles[k] = v;
     if (k === 'ghosts') this._applyGhostVisibility();
@@ -497,7 +504,10 @@ export class Stage {
       top: [0.12, 1, 0.18],
       low: [0.8, -0.12, 0.55],
     };
-    const v = new THREE.Vector3(...(views[name] || views.threeQuarter)).normalize().multiplyScalar(d);
+    let dir = views[name] || views.threeQuarter;
+    // Bar exercises: shift the side view off the posts' line of sight.
+    if (name === 'side' && this.ex?.props?.includes('bar')) dir = [1, 0.1, 0.42];
+    const v = new THREE.Vector3(...dir).normalize().multiplyScalar(d);
     const to = new THREE.Vector3(c.x + v.x, Math.max(0.2, c.y + v.y), c.z + v.z);
     this.view = name;
     if (instant) {
@@ -525,8 +535,10 @@ export class Stage {
       const n = task.joints.length;
       const v = new THREE.Vector3();
       const evalAt = (params) => {
+        for (const name of task.names.flat()) tmp[name] = [...pose[name]];
         task.joints.forEach((j, k) => {
-          for (const name of task.names[k]) { tmp[name] = [...pose[name]]; tmp[name][0] += params[k]; }
+          const ax = task.axes[k];
+          for (const name of task.names[k]) tmp[name][ax] += params[k] * (ax && name.endsWith('R') ? -1 : 1);
         });
         run(tmp);
         rig.world(task.point, v);
@@ -586,6 +598,20 @@ export class Stage {
       root.position.z += t[2] - p.z;
       root.updateMatrixWorld(true);
 
+      // Balance: hanging bodies settle with their centre of mass under the grip.
+      if (this.ex.balance) {
+        const T = new THREE.Vector3(...t);
+        for (let k = 0; k < 2; k++) {
+          const c = rig.com(new THREE.Vector3());
+          const dy = c.y - T.y; const dz = c.z - T.z;
+          if (Math.abs(dy) < 1e-4) break;
+          tmpQ.setFromAxisAngle(X_AXIS, Math.atan(-dz / dy));
+          root.position.sub(T).applyQuaternion(tmpQ).add(T);
+          root.quaternion.premultiply(tmpQ);
+          root.updateMatrixWorld(true);
+        }
+      }
+
       // Secondary contact: rotate about the world X axis through the primary
       // target until the second point sits at its target height.
       if (A.second) {
@@ -602,6 +628,13 @@ export class Stage {
         root.position.sub(T).applyQuaternion(tmpQ).add(T);
         root.quaternion.premultiply(tmpQ);
         root.updateMatrixWorld(true);
+      }
+
+      // Floor clamp (lying exercises): nothing may sink below the mat.
+      if (this.ex.floorClamp) {
+        let minY = Infinity;
+        for (const n of ['gluteL', 'gluteR', 'scapL', 'scapR', 'occiput', 'sacrum', 'lumbar', 'upperBack']) minY = Math.min(minY, rig.world(n, tmpV).y);
+        if (minY < 0) { root.position.y -= minY; root.updateMatrixWorld(true); }
       }
 
       // Flat feet: orient each foot level with the floor regardless of the
@@ -690,7 +723,24 @@ export class Stage {
     if (this.camTween) {
       const tw = this.camTween;
       tw.t = Math.min(1, tw.t + dt / 0.9);
-      this.camera.position.lerpVectors(tw.from, tw.to, ease.inOut(tw.t));
+      // Orbit around the target (spherical interpolation) so view changes
+      // swing around the figure instead of flying through it.
+      const c = this.controls.target;
+      if (!tw.s0) {
+        tw.s0 = new THREE.Spherical().setFromVector3(tw.from.clone().sub(c));
+        tw.s1 = new THREE.Spherical().setFromVector3(tw.to.clone().sub(c));
+        let dth = tw.s1.theta - tw.s0.theta;
+        if (dth > Math.PI) dth -= Math.PI * 2;
+        if (dth < -Math.PI) dth += Math.PI * 2;
+        tw.dth = dth;
+      }
+      const e = ease.inOut(tw.t);
+      const sp = new THREE.Spherical(
+        tw.s0.radius + (tw.s1.radius - tw.s0.radius) * e,
+        tw.s0.phi + (tw.s1.phi - tw.s0.phi) * e,
+        tw.s0.theta + tw.dth * e,
+      );
+      this.camera.position.setFromSpherical(sp).add(c);
       if (tw.t >= 1) this.camTween = null;
     }
   }
@@ -716,7 +766,7 @@ export class Stage {
       this.lineSegs[0].set(a, b); this.lineSegs[1].set(b, c);
       this.lineSegs.forEach((sg) => sg.mat.color.setHex(col));
       [a, b, c].forEach((p, i) => this.lineDots[i].position.copy(p));
-      this.readouts.push({ pos: b.clone(), text: `${L.label} ${ok ? '✓' : '✕'} ${ang.toFixed(0)}° off`, cls: ok ? 'good' : 'bad' });
+      this.readouts.push({ pos: b.clone(), name: L.label, value: `${ang.toFixed(0)}° ${ok ? '✓' : '✕'}`, cls: ok ? 'good' : 'bad', prio: ok ? 1 : 0 });
     }
 
     // Joint angle readouts
@@ -733,7 +783,7 @@ export class Stage {
       if (segI < 6) { this.angleSegs[segI].set(b, c); this.angleSegs[segI++].mesh.visible = true; }
       if (dotI < 3) { this.angleDots[dotI].position.copy(b); this.angleDots[dotI++].visible = true; }
       const inRange = m.good ? deg >= m.good[0] && deg <= m.good[1] : true;
-      this.readouts.push({ pos: b.clone(), text: `${m.label} ${deg.toFixed(0)}°`, cls: inRange ? 'angle in' : 'angle' });
+      this.readouts.push({ pos: b.clone(), name: m.label, value: `${deg.toFixed(0)}°`, cls: inRange ? 'angle in' : 'angle', prio: 2 });
     });
 
     // Motion trace
@@ -754,36 +804,53 @@ export class Stage {
       this.trace.geometry.attributes.position.needsUpdate = true;
       this.trace.geometry.attributes.color.needsUpdate = true;
       this.trace.geometry.setDrawRange(0, Math.max(1, n));
-      if (ex.trace.label) this.readouts.push({ pos: p.clone(), text: ex.trace.label, cls: 'trace' });
+      if (ex.trace.label) this.readouts.push({ pos: p.clone(), name: ex.trace.label, value: '', cls: 'trace', prio: 3 });
     }
   }
 
   /**
-   * Callout labels: readouts are laid out OUTSIDE the figure's on-screen
-   * outline (left/right of a standing body, above/below a horizontal one),
-   * de-overlapped, and tied to their joint with an arrowed leader line.
+   * Callout labels. Each readout is placed by scoring 8 candidate spots around
+   * the figure's on-screen outline: leader length, overlap with HUD elements
+   * and other labels (heavily penalised), and overlap with the figure itself.
+   * Labels that cannot be placed cleanly are hidden rather than stacked, and
+   * a side is only abandoned when another is clearly better (no flicker).
+   * Leaders are two-segment, with a dark halo so they read over muscle.
    */
   _updateLabels(dt = 1 / 60) {
-    const R = this.readouts || [];
+    const R = (this.readouts || []).slice().sort((a, b) => a.prio - b.prio);
     const W = this.container.clientWidth;
     const H = this.container.clientHeight;
+    const NS = 'http://www.w3.org/2000/svg';
     if (!this.leaderSvg) {
-      const NS = 'http://www.w3.org/2000/svg';
       this.leaderSvg = document.createElementNS(NS, 'svg');
       this.leaderSvg.setAttribute('class', 'leaders');
       this.labelLayer.appendChild(this.leaderSvg);
       this.leaders = [];
+      this.labelLayer.setAttribute('aria-hidden', 'true');
     }
-    while (this.labels.length < R.length) {
+    const narrow = W < 560;
+    const list = (narrow ? R.filter((r) => r.cls !== 'trace') : R).slice(0, narrow ? 3 : 5);
+    while (this.labels.length < list.length) {
       const el = document.createElement('div');
       el.className = 'label3d';
+      el.innerHTML = '<b></b><span class="v"></span>';
       this.labelLayer.appendChild(el);
       this.labels.push(el);
-      const NS = 'http://www.w3.org/2000/svg';
       const g = document.createElementNS(NS, 'g');
-      g.innerHTML = '<line/><polygon/><circle r="3.2"/>';
+      g.innerHTML = '<polyline class="halo"/><polyline class="ln"/><polygon/><circle r="3.2"/>';
       this.leaderSvg.appendChild(g);
       this.leaders.push(g);
+    }
+
+    // HUD obstacles, refreshed a few times per second (layout reads are costly).
+    this._obsT = (this._obsT || 0) - dt;
+    if (this._obsT <= 0 || !this._obstacles) {
+      this._obsT = 0.25;
+      const cr = this.container.getBoundingClientRect();
+      this._obstacles = [...this.container.querySelectorAll('.hud-top > *, #faultBanner:not([hidden]), #legend > *, #viewBtns, #sessionHud:not([hidden])')]
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => r.width && r.height)
+        .map((r) => ({ x: r.left - cr.left - 4, y: r.top - cr.top - 4, w: r.width + 8, h: r.height + 8 }));
     }
 
     // Screen-space outline of the body.
@@ -795,15 +862,41 @@ export class Stage {
       const sx = (v.x * 0.5 + 0.5) * W; const sy = (-v.y * 0.5 + 0.5) * H;
       x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
     }
-    const pad = 16; x0 -= pad; x1 += pad; y0 -= pad * 1.6; y1 += pad;
-    const TOP = W < 560 ? 70 : 84; const BOT = W < 560 ? 64 : 58; const GAP = 26; const EDGE = 10;
-    const wide = (x1 - x0) > (y1 - y0) * 1.1;
+    const pad = 14; x0 -= pad; x1 += pad; y0 -= pad * 1.6; y1 += pad;
+    const fig = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    // Body occupancy: boxes along every limb, so labels avoid the actual body
+    // (not just its bounding box, which is mostly empty in a T-shape).
+    const SEGS = [['pelvis', 'chestMid'], ['chestMid', 'neck'], ['neck', 'headTop'], ['shoulderL', 'shoulderR'],
+      ['shoulderL', 'elbowL'], ['elbowL', 'handL'], ['shoulderR', 'elbowR'], ['elbowR', 'handR'],
+      ['hipL', 'kneeCapL'], ['kneeCapL', 'ankleL'], ['ankleL', 'toeL'], ['hipR', 'kneeCapR'], ['kneeCapR', 'ankleR'], ['ankleR', 'toeR']];
+    const blobs = [];
+    const A3 = new THREE.Vector3(); const B3 = new THREE.Vector3(); const C3 = new THREE.Vector3();
+    const camDist = this.camera.position.distanceTo(this.controls.target);
+    const rpx = (0.075 / (2 * Math.tan((this.camera.fov * DEG) / 2) * camDist)) * H;
+    for (const [m, n] of SEGS) {
+      this.rig.world(m, A3); this.rig.world(n, B3);
+      for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+        C3.lerpVectors(A3, B3, f).project(this.camera);
+        const bx = (C3.x * 0.5 + 0.5) * W; const by = (-C3.y * 0.5 + 0.5) * H;
+        blobs.push({ x: bx - rpx, y: by - rpx, w: 2 * rpx, h: 2 * rpx });
+      }
+    }
+    const G = narrow ? 14 : 24; const EDGE = 8;
+    const ov = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+      Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
-    const items = [];
-    R.forEach((r, i) => {
+    const placed = [];
+    this.labels.forEach((el) => { el.style.display = 'none'; });
+    this.leaders.forEach((g) => { g.style.display = 'none'; });
+
+    list.forEach((r, i) => {
       const el = this.labels[i];
-      if (el._t !== r.text) { el.textContent = r.text; el._t = r.text; el._w = 0; }
-      const cls = 'label3d ' + r.cls;
+      if (el._name !== r.name) {
+        el.firstChild.textContent = r.name; el._name = r.name; el._w = 0; el._side = null;
+        el.classList.toggle('noval', !r.value);
+      }
+      if (el._val !== r.value) { el.lastChild.textContent = r.value; el._val = r.value; }
+      const cls = 'label3d ' + r.cls + (r.value ? '' : ' noval');
       if (el.className !== cls) el.className = cls;
       el.style.display = 'block';
       if (!el._w) { el._w = el.offsetWidth; el._h = el.offsetHeight; }
@@ -811,76 +904,63 @@ export class Stage {
       if (p.z > 1) { el.style.display = 'none'; return; }
       const px = (p.x * 0.5 + 0.5) * W; const py = (-p.y * 0.5 + 0.5) * H;
       const w = el._w; const h = el._h;
-      const fitL = x0 - GAP - w >= EDGE; const fitR = x1 + GAP + w <= W - EDGE;
-      const fitT = y0 - GAP - h >= TOP; const fitB = y1 + GAP + h <= H - BOT;
-      let side;
-      if (!wide) {
-        side = px < (x0 + x1) / 2 ? 'L' : 'R';
-        if (side === 'L' && !fitL) side = fitR ? 'R' : (fitT ? 'T' : 'B');
-        else if (side === 'R' && !fitR) side = fitL ? 'L' : (fitT ? 'T' : 'B');
-      } else {
-        side = py < (y0 + y1) / 2 ? 'T' : 'B';
-        if (side === 'T' && !fitT) side = fitB ? 'B' : (fitL ? 'L' : 'R');
-        else if (side === 'B' && !fitB) side = fitT ? 'T' : (fitR ? 'R' : 'L');
+      const cand = {
+        L: [x0 - G - w, py - h / 2], R: [x1 + G, py - h / 2],
+        T: [px - w / 2, y0 - G - h], B: [px - w / 2, y1 + G],
+        TL: [x0 - G - w, y0 - G - h], TR: [x1 + G, y0 - G - h],
+        BL: [x0 - G - w, y1 + G], BR: [x1 + G, y1 + G],
+      };
+      const score = {};
+      let best = null;
+      for (const [side, [cx, cy]] of Object.entries(cand)) {
+        const box = {
+          x: Math.min(W - EDGE - w, Math.max(EDGE, cx)),
+          y: Math.min(H - EDGE - h, Math.max(EDGE, cy)), w, h,
+        };
+        let hit = 0;
+        for (const o of this._obstacles) hit += ov(box, o);
+        for (const o of placed) hit += ov(box, o);
+        const ax = Math.min(box.x + w, Math.max(box.x, px)); const ay = Math.min(box.y + h, Math.max(box.y, py));
+        const lead = Math.hypot(ax - px, ay - py);
+        let body = 0;
+        for (const o of blobs) body += ov(box, o);
+        const sc = lead + 1e4 * hit + 4 * body + 60 * (ov(box, fig) / (w * h));
+        score[side] = { sc, box, hit };
+        if (!best || sc < best.sc) best = { side, sc, box, hit };
       }
-      items.push({ i, el, r, px, py, w, h, side });
-    });
+      const prev = el._side && score[el._side];
+      if (prev && prev.hit === 0 && best.sc > prev.sc * 0.7) best = { side: el._side, ...prev };
+      if (best.hit > 0) { el.style.display = 'none'; return; }
+      el._side = best.side;
+      placed.push({ x: best.box.x - 4, y: best.box.y - 4, w: w + 8, h: h + 8 });
 
-    // Place and de-overlap each side's stack.
-    for (const side of ['L', 'R', 'T', 'B']) {
-      const g = items.filter((it) => it.side === side);
-      if (!g.length) continue;
-      if (side === 'L' || side === 'R') {
-        g.sort((a, b) => a.py - b.py);
-        let prev = -Infinity;
-        for (const it of g) {
-          it.x = side === 'L' ? Math.max(EDGE, x0 - GAP - it.w) : Math.min(W - EDGE - it.w, x1 + GAP);
-          it.y = Math.max(TOP, Math.min(H - BOT - it.h, it.py - it.h / 2), prev + 6);
-          prev = it.y + it.h;
-        }
-        const over = prev - (H - BOT);
-        if (over > 0) g.forEach((it) => (it.y = Math.max(TOP, it.y - over)));
-      } else {
-        g.sort((a, b) => a.px - b.px);
-        let prev = -Infinity;
-        for (const it of g) {
-          it.y = side === 'T' ? Math.max(TOP, y0 - GAP - it.h) : Math.min(H - BOT - it.h, y1 + GAP);
-          it.x = Math.max(EDGE, Math.min(W - EDGE - it.w, it.px - it.w / 2), prev + 8);
-          prev = it.x + it.w;
-        }
-        const over = prev - (W - EDGE);
-        if (over > 0) g.forEach((it) => (it.x = Math.max(EDGE, it.x - over)));
-      }
-    }
-
-    // Draw (with light smoothing so stacks glide instead of jitter).
-    this.labels.forEach((el, i) => { if (!R[i]) el.style.display = 'none'; });
-    this.leaders.forEach((g) => (g.style.display = 'none'));
-    for (const it of items) {
-      const el = it.el;
-      const k = el._x == null || Math.abs(el._x - it.x) > 220 ? 1 : 1 - Math.exp(-dt * 14);
-      el._x = el._x == null ? it.x : el._x + (it.x - el._x) * k;
-      el._y = el._y == null ? it.y : el._y + (it.y - el._y) * k;
+      const k = el._x == null || Math.abs(el._x - best.box.x) > 240 ? 1 : 1 - Math.exp(-dt * 12);
+      el._x = el._x == null ? best.box.x : el._x + (best.box.x - el._x) * k;
+      el._y = el._y == null ? best.box.y : el._y + (best.box.y - el._y) * k;
       el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`;
-      let ax; let ay;
-      if (it.side === 'L') { ax = el._x + it.w; ay = el._y + it.h / 2; }
-      else if (it.side === 'R') { ax = el._x; ay = el._y + it.h / 2; }
-      else if (it.side === 'T') { ax = el._x + it.w / 2; ay = el._y + it.h; }
-      else { ax = el._x + it.w / 2; ay = el._y; }
-      const g = this.leaders[it.i];
-      g.style.display = '';
-      g.setAttribute('class', 'leader ' + it.r.cls);
-      const dx = it.px - ax; const dy = it.py - ay;
-      const len = Math.hypot(dx, dy) || 1;
+
+      // Two-segment leader: straight out of the label, then angled to the joint.
+      const lx = el._x; const ly = el._y;
+      let sx; let sy; let ex; let ey;
+      const side = best.side;
+      if (side === 'L' || side === 'TL' || side === 'BL') { sx = lx + w; sy = ly + h / 2; ex = sx + 10; ey = sy; }
+      else if (side === 'R' || side === 'TR' || side === 'BR') { sx = lx; sy = ly + h / 2; ex = sx - 10; ey = sy; }
+      else if (side === 'T') { sx = lx + w / 2; sy = ly + h; ex = sx; ey = sy + 8; }
+      else { sx = lx + w / 2; sy = ly; ex = sx; ey = sy - 8; }
+      const dx = px - ex; const dy = py - ey; const len = Math.hypot(dx, dy) || 1;
       const ux = dx / len; const uy = dy / len;
-      const tipX = it.px - ux * 5; const tipY = it.py - uy * 5;
-      const [line, poly, dotEl] = g.children;
-      line.setAttribute('x1', ax.toFixed(1)); line.setAttribute('y1', ay.toFixed(1));
-      line.setAttribute('x2', (tipX - ux * 6).toFixed(1)); line.setAttribute('y2', (tipY - uy * 6).toFixed(1));
+      const tipX = px - ux * 5; const tipY = py - uy * 5;
+      const pts2 = `${sx.toFixed(1)},${sy.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)} ${(tipX - ux * 6).toFixed(1)},${(tipY - uy * 6).toFixed(1)}`;
+      const g = this.leaders[i];
+      g.style.display = '';
+      g.setAttribute('class', 'leader ' + r.cls);
+      const [halo, ln, poly, dotEl] = g.children;
+      halo.setAttribute('points', pts2);
+      ln.setAttribute('points', pts2);
       const bx = tipX - ux * 9; const by = tipY - uy * 9;
       poly.setAttribute('points', `${tipX.toFixed(1)},${tipY.toFixed(1)} ${(bx - uy * 4.5).toFixed(1)},${(by + ux * 4.5).toFixed(1)} ${(bx + uy * 4.5).toFixed(1)},${(by - ux * 4.5).toFixed(1)}`);
-      dotEl.setAttribute('cx', it.px.toFixed(1)); dotEl.setAttribute('cy', it.py.toFixed(1));
-    }
+      dotEl.setAttribute('cx', px.toFixed(1)); dotEl.setAttribute('cy', py.toFixed(1));
+    });
   }
 
   _resize() {

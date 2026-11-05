@@ -5,7 +5,7 @@
 export const PRINCIPLES = [
   {
     k: '01', title: 'Minimum effective dose',
-    body: 'Three 45-minute full-body sessions a week. 12 movements cover every pattern: push, pull, squat, hinge, carry-the-core. Everything else is optional.',
+    body: 'Three 45-minute full-body sessions a week. 12 movements cover every pattern: push, pull, squat, hinge and core. Everything else is optional.',
   },
   {
     k: '02', title: 'Tension, not tiredness',
@@ -13,7 +13,7 @@ export const PRINCIPLES = [
   },
   {
     k: '03', title: 'Bias the stretch',
-    body: 'Reps that load a muscle at long lengths (bottom of the push-up, dead hang, deep split squat) produce more growth. Every exercise here has a pause where the muscle is longest.',
+    body: 'Reps that load a muscle at long lengths (bottom of the push-up, dead hang, deep split squat) produce more growth. Most exercises here pause where the muscle is longest; the rest slow the lowering.',
   },
   {
     k: '04', title: 'Lose fat at the table',
@@ -132,13 +132,13 @@ export const FIELD_NOTES = [
   },
   {
     tag: 'research', title: 'Diet breaks beat straight dieting',
-    body: 'Alternating blocks of dieting with short maintenance blocks produced more fat loss and less rebound than dieting continuously. Our week-8 deload is also a diet break.',
+    body: 'In the MATADOR trial, alternating 2 weeks of dieting with 2 weeks at maintenance produced more fat loss and less rebound than dieting continuously. Our week-8 deload is a lighter version: one 7-day break at maintenance.',
     how: 'Every 6–8 weeks: 7 days at maintenance, mostly extra carbs.',
     ref: 'Byrne et al. 2018, MATADOR study',
   },
   {
     tag: 'research', title: '10-minute walks after meals',
-    body: 'Short walks after eating blunt the blood-sugar spike more than one long walk at another time of day. It adds ~3,000 steps without "doing cardio".',
+    body: 'In a study of adults with type 2 diabetes, a 10-minute walk after each meal lowered post-meal blood sugar more than one 30-minute walk at another time. Two of these walks add roughly 2,000 steps without "doing cardio".',
     how: '10 min after the two biggest meals. Phone calls count.',
     ref: 'Reynolds et al. 2016, Diabetologia',
   },
@@ -163,7 +163,7 @@ export const FIELD_NOTES = [
   {
     tag: 'forge', title: 'Breath-count rest',
     body: 'Rest by 12 slow nasal breaths (4 s in, 6 s out ≈ 2 min) instead of a clock. The long exhale drops heart rate faster, you start the next set calmer, and you stop doom-scrolling between sets.',
-    how: '12 breaths for compounds, 6 for isolation, 4 for myo-reps.',
+    how: '12 breaths for compounds, 6 for isolation. Myo-rep mini-rests stay on the clock (15 s).',
     ref: 'FORGE method',
   },
   {
@@ -173,10 +173,10 @@ export const FIELD_NOTES = [
     ref: 'Calisthenics / kettlebell coaching tradition',
   },
   {
-    tag: 'research', title: 'Weighted stretch finisher',
-    body: 'Holding a loaded stretch at the end of the last set (bottom of a dip, deep split squat, dead hang) adds a growth signal at almost no recovery cost. Long-duration stretching alone has grown calf muscles in trials.',
+    tag: 'craft', title: 'Weighted stretch finisher',
+    body: 'Holding a loaded stretch at the end of the last set (bottom of a dip, deep split squat, dead hang) adds time under tension at long muscle length for almost no recovery cost. Trials that grew calf muscle used about an hour of stretching a day, so treat short holds as a promising extra, not a proven one.',
     how: '20–30 s, only in positions that feel safe. Never bounce.',
-    ref: 'Warneke et al. 2023 (emerging evidence)',
+    ref: 'Inspired by Warneke et al. 2023 (long-duration stretching)',
   },
   {
     tag: 'forge', title: 'Protein first, plate last',

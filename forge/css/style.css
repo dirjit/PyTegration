@@ -10,7 +10,7 @@
   --line-2: #2e3850;
   --text: #e9edf5;
   --muted: #98a2b8;
-  --dim: #6b7590;
+  --dim: #8792aa;
   --ember: #ff5a36;
   --amber: #ffa63d;
   --cyan: #52d4ff;
@@ -56,7 +56,7 @@ em { color: var(--amber); font-style: normal; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 13px 22px; border-radius: 999px; border: 0;
-  background: linear-gradient(135deg, var(--ember), #ff8a3d);
+  background: linear-gradient(135deg, #d9401f, #c95a1f);
   color: #fff; font-weight: 600; text-decoration: none; font-size: 15px;
   box-shadow: 0 8px 30px -8px rgba(255,90,54,.6);
   transition: transform .15s, box-shadow .2s;
@@ -125,7 +125,7 @@ em { color: var(--amber); font-style: normal; }
 /* ---------- form lab ---------- */
 .section-lab { max-width: 1680px; }
 .lab {
-  display: grid; grid-template-columns: 220px minmax(0, 1fr) 360px; gap: 18px;
+  display: grid; grid-template-columns: 190px minmax(0, 1fr) 320px; gap: 18px;
   align-items: start;
 }
 .ex-list { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 84px; }
@@ -167,7 +167,7 @@ em { color: var(--amber); font-style: normal; }
 .mchip.p i { background: var(--ember); box-shadow: 0 0 8px var(--ember); }
 .mchip.s i { background: var(--amber); }
 .fault-banner {
-  position: absolute; z-index: 3; top: 72px; left: 50%; transform: translateX(-50%);
+  display: inline-block; margin-top: 8px; max-width: min(420px, 100%);
   background: rgba(255,59,92,.14); border: 1px solid rgba(255,59,92,.6); color: #ffd0d8;
   padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis;
 }
@@ -181,6 +181,9 @@ em { color: var(--amber); font-style: normal; }
   background: rgba(10,13,19,.82); border: 1px solid var(--line-2); color: var(--text);
   will-change: transform;
 }
+.label3d b { font-weight: 600; }
+.label3d .v { display: inline-block; min-width: 4.2ch; text-align: right; margin-left: 6px; font-weight: 700; }
+.label3d.noval .v { display: none; }
 .label3d.angle { color: #ffe2a3; border-color: rgba(255,209,102,.45); }
 .label3d.angle.in { color: #06131a; background: #ffd166; border-color: #ffd166; }
 .label3d.good { color: #b9ffd9; border-color: rgba(61,255,154,.55); }
@@ -188,7 +191,9 @@ em { color: var(--amber); font-style: normal; }
 .label3d.trace { color: #bdefff; border-color: rgba(82,212,255,.4); font-weight: 500; }
 .leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .leader { --c: #ffe2a3; }
-.leader line { stroke: var(--c); stroke-width: 1.4; stroke-opacity: .85; }
+.leader polyline { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.leader .halo { stroke: rgba(10,13,19,.75); stroke-width: 3.6; }
+.leader .ln { stroke: var(--c); stroke-width: 1.4; }
 .leader polygon { fill: var(--c); }
 .leader circle { fill: none; stroke: var(--c); stroke-width: 1.6; }
 .leader.in { --c: #ffd166; }
@@ -239,7 +244,7 @@ select, input[type=number] {
 
 /* session HUD */
 .session-hud {
-  position: absolute; z-index: 4; right: 16px; top: 72px; width: 280px;
+  position: absolute; z-index: 4; left: 16px; bottom: 16px; width: 280px;
   background: rgba(13,17,25,.92); border: 1px solid var(--line-2); border-radius: 16px; padding: 16px;
   backdrop-filter: blur(10px); box-shadow: 0 20px 50px -20px rgba(0,0,0,.8);
 }
@@ -363,7 +368,7 @@ select, input[type=number] {
 .reveal.in { opacity: 1; transform: none; }
 
 /* ---------- responsive ---------- */
-@media (max-width: 1280px) {
+@media (max-width: 1440px) {
   .lab { grid-template-columns: minmax(0, 1fr) 340px; }
   .ex-list { grid-column: 1 / -1; position: static; flex-direction: row; flex-wrap: wrap; }
   .ex-group { display: none; }
@@ -400,8 +405,9 @@ select, input[type=number] {
   .hud-legend { display: none; }
   .hud-views { left: 12px; right: 12px; bottom: 12px; justify-content: space-between; }
   .hud-top { top: 12px; left: 12px; right: 12px; }
-  .session-hud { left: 12px; right: 12px; width: auto; top: auto; bottom: 60px; }
-  .fault-banner { top: 64px; font-size: 12px; white-space: normal; text-align: center; border-radius: 12px; }
+  .session-hud { position: static; width: auto; margin-top: 10px; }
+  .fault-banner { font-size: 11.5px; padding: 6px 12px; }
+  .hud-name { font-size: 20px; }
   .controls { flex-wrap: wrap; }
   .timeline { order: 3; flex-basis: 100%; }
   .week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -417,3 +423,27 @@ select, input[type=number] {
   html { scroll-behavior: auto; }
   .reveal { opacity: 1; transform: none; transition: none; }
 }
+
+/* ---------- in-session, focus, menu ---------- */
+.in-session .hud-legend { display: none; }
+:focus-visible, .seg input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.nav-menu { display: none; border: 1px solid var(--line-2); background: var(--panel); border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 600; }
+@media (max-width: 960px) {
+  .nav-menu { display: inline-flex; margin-left: auto; }
+  .nav.open .nav-links {
+    display: flex; flex-direction: column; gap: 4px; position: absolute; top: 100%; left: 0; right: 0;
+    background: rgba(10,13,19,.97); border-bottom: 1px solid var(--line); padding: 10px max(16px, env(safe-area-inset-left, 0px)) 16px;
+  }
+  .nav.open .nav-links a { padding: 10px 0; font-size: 16px; }
+}
+
+/* ---------- anatomy layer control ---------- */
+.layer-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.layer-label { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); }
+.layer-seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 3px; gap: 2px; }
+.layer-seg button { border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 9px; font-size: 13px; font-weight: 600; }
+.layer-seg button.on { background: linear-gradient(135deg, rgba(217,64,31,.35), rgba(201,90,31,.25)); color: var(--text); box-shadow: inset 0 0 0 1px rgba(255,90,54,.5); }
+@media (max-width: 640px) { .layer-seg button { padding: 7px 9px; font-size: 12px; } }
+
+.hud-top > div:first-child { min-width: 0; }
+.phase-pill { flex: none; }

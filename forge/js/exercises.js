@@ -24,15 +24,15 @@ export const EXERCISES = [
     props: ['mat'],
     view: 'side',
     anchor: { point: 'mid:toeL,toeR', target: [0, 0, -0.75], second: { point: HANDS, y: 0.03 } },
-    ik: { joints: 'shoulder', point: HANDS },
+    ik: { joints: ['shoulder', 'shoulder'], axes: [0, 1], point: 'handL', dims: ['z', 'x'] },
     poses: [
       { root: [78], neck: [6], shoulder: [-63, 0, 18], elbow: [-3], wrist: [-102], ankle: [6] },
-      { root: [86], neck: [8], spine: [-2], shoulder: [-6, 0, 38], elbow: [-100], wrist: [-80], ankle: [8] },
+      { root: [89], neck: [8], spine: [-2], shoulder: [10, 0, 38], elbow: [-120], wrist: [-80], ankle: [8] },
     ],
     tempo: [
       { label: 'Lower', dur: 3, from: 0, to: 1, tension: 0.9 },
       { label: 'Pause', dur: 1, from: 1, to: 1, tension: 1 },
-      { label: 'Press', dur: 1, from: 1, to: 0, ease: 'out', tension: 1 },
+      { label: 'Press', dur: 1, from: 1, to: 0, ease: 'drive', tension: 1 },
       { label: 'Protract', dur: 0.6, from: 0, to: 0, tension: 0.45 },
     ],
     tempoCode: '3-1-1-0',
@@ -44,7 +44,7 @@ export const EXERCISES = [
     trace: { pt: 'sternum', label: 'Sternum path' },
     fault: {
       label: 'Sagging hips + flared elbows + chicken neck',
-      delta: [{ spine: [-10], hip: [10], neck: [-22] }, { spine: [-16], hip: [16], neck: [-30], shoulder: [0, 0, 40] }],
+      delta: [{ spine: [-8], hip: [8], neck: [-22] }, { spine: [-8], hip: [8], neck: [-30], shoulder: [0, 0, 40] }],
     },
     prescription: '4 × 6–12',
     rest: '90 s',
@@ -75,6 +75,8 @@ export const EXERCISES = [
     props: ['bar'],
     view: 'threeQuarter',
     anchor: { point: HANDS, target: [0, 2.3, 0] },
+    balance: true,
+    ik: { joints: 'shoulder', axes: [1], point: 'handL', dims: ['x'] },
     poses: [
       { shoulder: [-174, 0, 22], elbow: [-2], hip: [-10], knee: [22], ankle: [25] },
       { chest: [-6], spine: [-4], shoulder: [-166, 0, 20], elbow: [-4], hip: [-14], knee: [22], ankle: [25] },
@@ -83,7 +85,7 @@ export const EXERCISES = [
     tempo: [
       { label: 'Dead hang', dur: 0.8, from: 0, to: 0, tension: 0.3 },
       { label: 'Scap set', dur: 0.6, from: 0, to: 1, tension: 0.6 },
-      { label: 'Pull', dur: 1.1, from: 1, to: 2, ease: 'out', tension: 1 },
+      { label: 'Pull', dur: 1.1, from: 1, to: 2, ease: 'drive', tension: 1 },
       { label: 'Squeeze', dur: 1, from: 2, to: 2, tension: 1 },
       { label: 'Lower', dur: 3, from: 2, to: 0, tension: 0.9 },
     ],
@@ -132,7 +134,7 @@ export const EXERCISES = [
     tempo: [
       { label: 'Lower', dur: 2.6, from: 0, to: 1, tension: 0.9 },
       { label: 'Pause', dur: 0.8, from: 1, to: 1, tension: 1 },
-      { label: 'Press', dur: 1, from: 1, to: 0, ease: 'out', tension: 1 },
+      { label: 'Press', dur: 1, from: 1, to: 0, ease: 'drive', tension: 1 },
       { label: 'Lockout', dur: 0.6, from: 0, to: 0, tension: 0.4 },
     ],
     tempoCode: '3-1-1-0',
@@ -172,6 +174,7 @@ export const EXERCISES = [
     props: ['dip'],
     view: 'threeQuarter',
     anchor: { point: HANDS, target: [0, 1.32, 0] },
+    ik: { joints: 'shoulder', axes: [2], point: 'handL', dims: ['x'] },
     poses: [
       { root: [8], shoulder: [-7, 0, 10], elbow: [-2], wrist: [-4], hip: [-24], knee: [88], ankle: [28] },
       { root: [24], neck: [4], shoulder: [70, 0, 18], elbow: [-98], wrist: [0], hip: [-34], knee: [92], ankle: [28] },
@@ -179,7 +182,7 @@ export const EXERCISES = [
     tempo: [
       { label: 'Lower', dur: 3, from: 0, to: 1, tension: 0.9 },
       { label: 'Stretch', dur: 1, from: 1, to: 1, tension: 1 },
-      { label: 'Press', dur: 1, from: 1, to: 0, ease: 'out', tension: 1 },
+      { label: 'Press', dur: 1, from: 1, to: 0, ease: 'drive', tension: 1 },
       { label: 'Lockout', dur: 0.6, from: 0, to: 0, tension: 0.4 },
     ],
     tempoCode: '3-1-1-0',
@@ -217,15 +220,18 @@ export const EXERCISES = [
     primary: ['upperback', 'lats'],
     secondary: ['biceps', 'delts', 'glutes'],
     props: ['bar'],
-    view: 'side',
-    anchor: { point: HANDS, target: [0, 1.22, 0], second: { point: 'mid:heelL,heelR', y: 0 } },
-    ik: { joints: 'shoulder', point: 'mid:heelL,heelR' },
+    view: 'threeQuarter',
+    anchor: { point: HANDS, target: [0, 1.1, 0], second: { point: 'mid:heelL,heelR', y: 0 } },
+    ik: [
+      { joints: 'shoulder', point: 'mid:heelL,heelR' },
+      { joints: 'shoulder', axes: [1], point: 'handL', dims: ['x'] },
+    ],
     poses: [
-      { root: [-62], shoulder: [-116, 0, 16], elbow: [-2], ankle: [-6] },
-      { root: [-70], chest: [-8], shoulder: [38, 0, 42], elbow: [-138], ankle: [-6] },
+      { root: [-62], shoulder: [-64, 0, 16], elbow: [-2], ankle: [-6] },
+      { root: [-70], chest: [-10], shoulder: [38, 0, 42], elbow: [-135], ankle: [-6] },
     ],
     tempo: [
-      { label: 'Pull', dur: 1, from: 0, to: 1, ease: 'out', tension: 1 },
+      { label: 'Pull', dur: 1, from: 0, to: 1, ease: 'drive', tension: 1 },
       { label: 'Squeeze 2 s', dur: 2, from: 1, to: 1, tension: 1 },
       { label: 'Lower', dur: 2.4, from: 1, to: 0, tension: 0.85 },
       { label: 'Reach', dur: 0.6, from: 0, to: 0, tension: 0.4 },
@@ -269,13 +275,13 @@ export const EXERCISES = [
     ik: { joints: ['hipR', 'kneeR'], point: 'ankleR', dims: ['y', 'z'] },
     lockFeet: ['R'],
     poses: [
-      { root: [10], shoulder: [-10, 0, 8], hipL: [-18], kneeL: [10], hipR: [26], kneeR: [72], ankleR: [62] },
+      { root: [10], shoulder: [-10, 0, 8], hipL: [-18], kneeL: [10], hipR: [14], kneeR: [60], ankleR: [62] },
       { root: [24], shoulder: [-24, 0, 8], hipL: [-92], kneeL: [100], hipR: [-6], kneeR: [108], ankleR: [64] },
     ],
     tempo: [
       { label: 'Descend', dur: 3, from: 0, to: 1, tension: 0.9 },
       { label: 'Pause', dur: 1, from: 1, to: 1, tension: 1 },
-      { label: 'Drive', dur: 1, from: 1, to: 0, ease: 'out', tension: 1 },
+      { label: 'Drive', dur: 1, from: 1, to: 0, ease: 'drive', tension: 1 },
       { label: 'Stand', dur: 0.6, from: 0, to: 0, tension: 0.4 },
     ],
     tempoCode: '3-1-1-0',
@@ -306,7 +312,7 @@ export const EXERCISES = [
     ],
     breathing: 'Breathe in at the top, brace and descend, exhale through the drive.',
     progressions: ['Split squat (rear foot on floor)', 'Bulgarian split squat', '1½-rep BSS', 'Dumbbells / backpack', 'Deficit front foot', 'Shrimp / pistol squat'],
-    insight: 'One leg at a time means bodyweight alone is already ~2× the load per leg of a regular squat — the most "gym-free" leg builder there is. And it fixes left/right imbalances you never knew you had.',
+    insight: 'One leg at a time puts roughly 1.5–1.7× the load on the working leg compared with a regular squat — the most "gym-free" leg builder there is. And it fixes left/right imbalances you never knew you had.',
   },
   // ---------------------------------------------------------------------------
   {
@@ -321,12 +327,12 @@ export const EXERCISES = [
     flatFeet: true,
     poses: [
       { shoulder: [-2, 0, 6], hip: [0], knee: [8] },
-      { root: [74], neck: [-14], shoulder: [-74, 0, 6], hip: [-80], knee: [20] },
+      { root: [64], neck: [-14], shoulder: [-40, 0, 6], hip: [-94], knee: [20] },
     ],
     tempo: [
       { label: 'Hinge back', dur: 3, from: 0, to: 1, tension: 0.9 },
       { label: 'Stretch', dur: 0.8, from: 1, to: 1, tension: 1 },
-      { label: 'Hips through', dur: 1.1, from: 1, to: 0, ease: 'out', tension: 1 },
+      { label: 'Hips through', dur: 1.1, from: 1, to: 0, ease: 'drive', tension: 1 },
       { label: 'Lockout', dur: 0.6, from: 0, to: 0, tension: 0.35 },
     ],
     tempoCode: '3-1-1-0',
@@ -375,7 +381,7 @@ export const EXERCISES = [
       { root: [8], hip: [-8], knee: [6], shoulder: [-6, -26, 88], elbow: [-18] },
     ],
     tempo: [
-      { label: 'Raise', dur: 1.1, from: 0, to: 1, ease: 'out', tension: 0.9 },
+      { label: 'Raise', dur: 1.1, from: 0, to: 1, ease: 'drive', tension: 0.9 },
       { label: 'Hold', dur: 0.5, from: 1, to: 1, tension: 1 },
       { label: 'Lower', dur: 2.5, from: 1, to: 0, tension: 0.85 },
       { label: 'Reset', dur: 0.4, from: 0, to: 0, tension: 0.4 },
@@ -385,7 +391,7 @@ export const EXERCISES = [
     trace: { pt: 'handL', label: 'Lead with the elbow' },
     fault: {
       label: 'Shrug + swing + wrists above elbows',
-      delta: [{ root: [-6] }, { root: [-16], chest: [-10], elbow: [-40], shoulder: [-20, 0, 18] }],
+      delta: [{ root: [-6] }, { root: [-14], chest: [-8], elbow: [-30], shoulder: [0, 0, 6] }],
     },
     prescription: '3 × 12–20 + myo-reps',
     rest: '60 s',
@@ -414,12 +420,13 @@ export const EXERCISES = [
     props: ['bar'],
     view: 'threeQuarter',
     anchor: { point: HANDS, target: [0, 2.3, 0] },
+    balance: true,
     poses: [
       { shoulder: [-174, 0, 22], elbow: [-2], hip: [-4], knee: [4], ankle: [28] },
       { shoulder: [-160, 0, 22], elbow: [-2], spine: [24], chest: [6], hip: [-104], knee: [8], ankle: [30] },
     ],
     tempo: [
-      { label: 'Curl up', dur: 1.3, from: 0, to: 1, ease: 'out', tension: 1 },
+      { label: 'Curl up', dur: 1.3, from: 0, to: 1, ease: 'drive', tension: 1 },
       { label: 'Hold', dur: 0.7, from: 1, to: 1, tension: 1 },
       { label: 'Lower', dur: 2.6, from: 1, to: 0, tension: 0.85 },
       { label: 'Still', dur: 0.6, from: 0, to: 0, tension: 0.35 },
@@ -458,11 +465,12 @@ export const EXERCISES = [
     props: ['mat'],
     view: 'side',
     anchor: { point: 'lumbar', target: [0, 0.0, 0] },
+    floorClamp: true,
     matZ: 0,
     poses: [
       { root: [-90], shoulder: [-10, 0, 8], hip: [-88], knee: [92], ankle: [10] },
-      { root: [-90], spine: [12], chest: [10], neck: [22], shoulder: [-168, 0, 10], hip: [-26], knee: [2], ankle: [32] },
-      { root: [-90], spine: [14], chest: [11], neck: [22], shoulder: [-164, 0, 10], hip: [-22], knee: [2], ankle: [32] },
+      { root: [-90], spine: [16], chest: [10], neck: [22], shoulder: [-168, 0, 10], hip: [-18], knee: [2], ankle: [32] },
+      { root: [-90], spine: [18], chest: [11], neck: [22], shoulder: [-164, 0, 10], hip: [-15], knee: [2], ankle: [32] },
     ],
     tempo: [
       { label: 'Press low back down', dur: 1.4, from: 0, to: 1, ease: 'inOut', tension: 0.8 },
@@ -510,11 +518,11 @@ export const EXERCISES = [
     flatFeet: ['L'],
     matZ: 0,
     poses: [
-      { root: [-90], shoulder: [-6, 0, 22], elbow: [-2], hipL: [-62], kneeL: [100], hipR: [-62], kneeR: [4], ankleR: [-8] },
-      { root: [-90], shoulder: [-6, 0, 22], elbow: [-2], hipL: [-6], kneeL: [92], hipR: [-6], kneeR: [4], ankleR: [-8] },
+      { root: [-90], shoulder: [-6, 0, 22], elbow: [-2], hipL: [-42], kneeL: [105], hipR: [-42], kneeR: [4], ankleR: [-8] },
+      { root: [-90], neck: [30], shoulder: [-6, 0, 22], elbow: [-2], hipL: [-6], kneeL: [92], hipR: [-6], kneeR: [4], ankleR: [-8] },
     ],
     tempo: [
-      { label: 'Drive hips up', dur: 1, from: 0, to: 1, ease: 'out', tension: 1 },
+      { label: 'Drive hips up', dur: 1, from: 0, to: 1, ease: 'drive', tension: 1 },
       { label: 'Squeeze 2 s', dur: 2, from: 1, to: 1, tension: 1 },
       { label: 'Lower', dur: 2.2, from: 1, to: 0, tension: 0.8 },
       { label: 'Tap', dur: 0.5, from: 0, to: 0, tension: 0.35 },
@@ -525,7 +533,7 @@ export const EXERCISES = [
     trace: { pt: 'pelvis', label: 'Hip arc' },
     fault: {
       label: 'Arching the lower back instead of using the glutes',
-      delta: [{}, { spine: [-26], chest: [-10], hipL: [18], hipR: [18] }],
+      delta: [{}, { spine: [-24], neck: [40], hipL: [16], hipR: [16] }],
     },
     prescription: '2 × 12–15 / leg',
     rest: '45 s',
@@ -556,13 +564,13 @@ export const EXERCISES = [
     anchor: { point: FEET, target: [0, 0, 0] },
     flatFeet: true,
     poses: [
-      { root: [64], neck: [-16], hip: [-84, 0, 6], knee: [24], shoulder: [-30, 0, -9], elbow: [-2] },
-      { root: [-2], hip: [0, 0, 6], knee: [2], shoulder: [-92, 0, -9], elbow: [-2] },
+      { root: [64], neck: [-16], hip: [-84, 0, 12], knee: [24], shoulder: [-30, 0, -9], elbow: [-2] },
+      { root: [-4], hip: [0, 0, 12], knee: [2], shoulder: [-92, 0, -9], elbow: [-2] },
     ],
     tempo: [
-      { label: 'Hip snap', dur: 0.48, from: 0, to: 1, ease: 'snap', tension: 1 },
+      { label: 'Hip snap', dur: 0.48, from: 0, to: 1, ease: 'drive', tension: 1 },
       { label: 'Float', dur: 0.32, from: 1, to: 1, tension: 0.5 },
-      { label: 'Hike back', dur: 0.62, from: 1, to: 0, ease: 'in', tension: 0.85 },
+      { label: 'Hike back', dur: 0.62, from: 1, to: 0, ease: 'driveIn', tension: 0.85 },
       { label: 'Load', dur: 0.12, from: 0, to: 0, tension: 1 },
     ],
     tempoCode: 'Explosive',

@@ -49,6 +49,9 @@ let hero = null;
 if (webglOK()) {
   try {
     hero = new Stage($('#heroCanvas'), { hero: true, pixelRatio: 1.5 });
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyMotion = () => { hero.controls.autoRotate = !reduce.matches; hero.playing = !reduce.matches; };
+    reduce.addEventListener?.('change', applyMotion);
     let hi = 0;
     let reps = 0;
     const heroSet = (i) => {
@@ -58,6 +61,7 @@ if (webglOK()) {
       $('#heroTag').textContent = ex.name;
     };
     heroSet(0);
+    applyMotion();
     let lastRep = 0;
     hero.on(({ rep }) => {
       if (rep !== lastRep) {
@@ -91,6 +95,8 @@ if (webglOK()) {
   try {
     lab = new Stage($('#labCanvas'));
     $('#labLoading').remove();
+    // On touch screens let vertical swipes scroll the page; horizontal drags orbit.
+    if (window.matchMedia('(pointer: coarse)').matches) lab.renderer.domElement.style.touchAction = 'pan-y';
   } catch (e) {
     console.warn(e);
     $('#labLoading').textContent = '3D unavailable on this device — the form cues on the right still apply.';
@@ -105,7 +111,7 @@ let activeTab = 'cues';
 function selectExercise(id, { scroll = false } = {}) {
   const ex = EX_BY_ID[id];
   current = ex;
-  $$('.ex-btn').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
+  $$('.ex-btn').forEach((b) => { b.classList.toggle('on', b.dataset.id === id); b.setAttribute('aria-pressed', String(b.dataset.id === id)); });
   const onBtn = exList.querySelector(`.ex-btn[data-id="${id}"]`);
   if (onBtn && exList.scrollWidth > exList.clientWidth) {
     exList.scrollTo({ left: onBtn.offsetLeft - exList.clientWidth / 2 + onBtn.offsetWidth / 2, behavior: 'smooth' });
@@ -151,15 +157,25 @@ $('#tabs').addEventListener('click', (e) => {
   const t = e.target.closest('.tab');
   if (!t) return;
   activeTab = t.dataset.tab;
-  $$('.tab').forEach((x) => x.classList.toggle('on', x === t));
+  $$('.tab').forEach((x) => { x.classList.toggle('on', x === t); x.setAttribute('aria-selected', String(x === t)); });
   renderTab();
 });
 
 if (lab) {
   const pill = $('#phasePill');
+  const tlEl = $('#timeline');
+  tlEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const now = (+tlEl.getAttribute('aria-valuenow') || 0) / 100;
+    lab.playing = false;
+    $('#playBtn').textContent = '▶';
+    lab.seek(Math.min(0.999, Math.max(0, now + (e.key === 'ArrowRight' ? 0.05 : -0.05))));
+  });
   let lastSeg = null;
   lab.on(({ seg, index, cycleT, rep }) => {
     $('#tlHead').style.left = `calc(${(cycleT * 100).toFixed(2)}% - 1px)`;
+    tlEl.setAttribute('aria-valuenow', String(Math.round(cycleT * 100)));
     if (seg !== lastSeg) {
       lastSeg = seg;
       $('#phaseName').textContent = seg.label;
@@ -193,14 +209,22 @@ if (lab) {
     const v = !lab.toggles[k];
     lab.setToggle(k, v);
     c.classList.toggle('on', v);
+    c.setAttribute('aria-pressed', String(v));
     if (k === 'fault') $('#faultBanner').hidden = !(v && current?.fault);
+  });
+
+  $('#layerSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    lab.setLayer(b.dataset.layer);
+    $$('#layerSeg button').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
   });
 
   $('#viewBtns').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     lab.setView(b.dataset.view);
-    $$('#viewBtns button').forEach((x) => x.classList.toggle('on', x === b));
+    $$('#viewBtns button').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
   });
 }
 selectExercise('pushup');
@@ -291,6 +315,7 @@ function beep() {
 
 function startSession(key) {
   const s = SESSIONS[key];
+  document.body.classList.add('in-session');
   session = { key, s, i: 0, set: 1, resting: false };
   showSessionExercise();
   $('#lab').scrollIntoView({ behavior: 'smooth' });
@@ -307,7 +332,7 @@ function renderHud() {
   const dots = session.s.items.map((_, i) => `<i class="${i < session.i ? 'done' : ''}"></i>`).join('');
   hud.hidden = false;
   if (session.resting) {
-    hud.innerHTML = `<h4>Rest · breathe</h4><div class="rest-timer" id="restLeft">${fmt(session.restLeft)}</div>
+    hud.innerHTML = `<h4>Rest · breathe</h4><div class="rest-timer" id="restLeft" role="timer" aria-live="off">${fmt(session.restLeft)}</div>
       <div class="meta" style="text-align:center">Next: set ${session.set} of ${sets} · ${esc(EX_BY_ID[id].name)}</div>
       <div class="row"><button class="btn btn-ghost btn-sm" data-a="skip">Skip rest</button><button class="btn btn-ghost btn-sm" data-a="add">+15 s</button></div>
       <div class="dots">${dots}</div>`;
@@ -351,6 +376,7 @@ hud.addEventListener('click', (e) => {
 
 function endSession(completed) {
   clearInterval(restTimer);
+  document.body.classList.remove('in-session');
   if (completed && session.key !== 'F') {
     const t = store.get('tracker', []);
     const idx = [...Array(36).keys()].find((i) => !t.includes(i));
@@ -366,6 +392,25 @@ function endSession(completed) {
 hud.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) hud.hidden = true; });
 $('#navStart').addEventListener('click', () => startSession('A'));
 
+// On phones the session panel sits under the 3D view instead of covering it.
+const phoneMQ = window.matchMedia('(max-width: 640px)');
+const placeHud = () => {
+  if (phoneMQ.matches) $('#labCanvas').after(hud);
+  else $('#labCanvas').append(hud);
+};
+phoneMQ.addEventListener?.('change', placeHud);
+placeHud();
+
+// Compact menu for small screens.
+const navMenu = $('#navMenu');
+navMenu.addEventListener('click', () => {
+  const open = $('#nav').classList.toggle('open');
+  navMenu.setAttribute('aria-expanded', String(open));
+});
+$('#navLinks').addEventListener('click', (e) => {
+  if (e.target.closest('a')) { $('#nav').classList.remove('open'); navMenu.setAttribute('aria-expanded', 'false'); }
+});
+
 // -----------------------------------------------------------------------------
 // Fuel calculator
 // -----------------------------------------------------------------------------
@@ -379,6 +424,8 @@ function renderCalc() {
     if (newUnit === 'imperial') { w.value = (w.value * 2.2046).toFixed(0); ht.value = (ht.value / 2.54).toFixed(0); }
     else { w.value = (w.value / 2.2046).toFixed(1); ht.value = (ht.value * 2.54).toFixed(0); }
     unit = newUnit;
+    if (unit === 'imperial') { w.min = 77; w.max = 660; ht.min = 47; ht.max = 90; }
+    else { w.min = 35; w.max = 300; ht.min = 120; ht.max = 230; }
     $('#wLabel').textContent = unit === 'metric' ? 'Weight (kg)' : 'Weight (lb)';
     $('#hLabel').textContent = unit === 'metric' ? 'Height (cm)' : 'Height (in)';
   }
@@ -394,7 +441,9 @@ function renderCalc() {
   const tdee = bmr * act + 150;
   const target = Math.round((tdee * (1 - def)) / 10) * 10;
   const proteinPerKg = def >= 0.25 ? 2.3 : 2.0;
-  const protein = Math.round(kg * proteinPerKg);
+  // Large bodies: base protein on an estimate of lean-ish mass (height − 100).
+  const proteinKg = Math.min(kg, Math.max(cm - 100, 45) * 1.1);
+  const protein = Math.round(proteinKg * proteinPerKg);
   const fat = Math.round(Math.max(kg * 0.7, (target * 0.25) / 9));
   const carbs = Math.max(0, Math.round((target - protein * 4 - fat * 9) / 4));
   const weeklyKg = ((tdee - target) * 7) / 7700;
@@ -405,13 +454,14 @@ function renderCalc() {
   const steps = def >= 0.25 ? '12k' : def >= 0.2 ? '10k' : '8k';
   $('#results').innerHTML = `
     <div class="stat hl"><small>Daily calories</small><strong>${target.toLocaleString()}</strong><span>maintenance ≈ ${Math.round(tdee).toLocaleString()} kcal</span></div>
-    <div class="stat"><small>Protein</small><strong>${protein} g</strong><span>${proteinPerKg} g/kg · split over 3–4 meals</span></div>
+    <div class="stat"><small>Protein</small><strong>${protein} g</strong><span>${proteinKg < kg ? `${proteinPerKg} g/kg of ~${Math.round(proteinKg)} kg target weight` : `${proteinPerKg} g/kg`} · 3–4 meals</span></div>
     <div class="stat"><small>Expected loss</small><strong>${wk.toFixed(2)} ${U}</strong><span>per week · ${pct.toFixed(2)}% bodyweight</span></div>
     <div class="stat"><small>Steps</small><strong>${steps}</strong><span>per day · + walks after meals</span></div>
     <div class="stat macro"><small>Macro split</small>
       <div class="macro-bar"><i style="width:${(protein * 400) / tot}%;background:var(--ember)"></i><i style="width:${(fat * 900) / tot}%;background:var(--amber)"></i><i style="width:${(carbs * 400) / tot}%;background:var(--cyan)"></i></div>
       <div class="macro-legend"><span><i style="background:var(--ember)"></i>Protein <b>${protein} g</b></span><span><i style="background:var(--amber)"></i>Fat <b>${fat} g</b></span><span><i style="background:var(--cyan)"></i>Carbs <b>${carbs} g</b> — most of them around training</span></div>
     </div>
+    ${target < Math.max(bmr, sex === 'm' ? 1500 : 1200) ? `<div class="warn">${target.toLocaleString()} kcal is below your resting needs (≈${Math.round(Math.max(bmr, sex === 'm' ? 1500 : 1200)).toLocaleString()} kcal). Use a gentler goal, or diet this low only with medical supervision.</div>` : ''}
     ${pct > 1 ? '<div class="warn">Faster than 1% of bodyweight per week usually costs muscle. Consider the −20% setting unless you have a lot of fat to lose.</div>' : ''}
     <div class="stat macro"><small>Water & micronutrients</small><span>≈ ${(kg * 0.035).toFixed(1)} L water/day · 30 g+ fibre · 2–3 fist-sized portions of vegetables per meal · creatine monohydrate 3–5 g/day is the one supplement with strong evidence.</span></div>`;
 }
