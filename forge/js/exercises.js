@@ -17,6 +17,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'elbow',
+    grip: 0.55,
     name: 'Elbow Flexion',
     pattern: 'Anatomy demo · biceps vs triceps',
     primary: ['biceps'],
@@ -58,6 +59,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'pushup',
+    grip: 0.0,
     name: 'Push-Up',
     pattern: 'Horizontal push',
     primary: ['chest', 'triceps'],
@@ -109,6 +111,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'pullup',
+    grip: 0.92,
     name: 'Pull-Up',
     pattern: 'Vertical pull',
     primary: ['lats', 'upperback'],
@@ -160,6 +163,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'pike',
+    grip: 0.0,
     name: 'Pike Push-Up',
     pattern: 'Vertical push',
     primary: ['delts', 'triceps'],
@@ -208,6 +212,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'dip',
+    grip: 0.7,
     name: 'Parallel Bar Dip',
     pattern: 'Vertical push',
     primary: ['chest', 'triceps'],
@@ -256,6 +261,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'row',
+    grip: 0.92,
     name: 'Inverted Row',
     pattern: 'Horizontal pull',
     primary: ['upperback', 'lats'],
@@ -302,6 +308,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'bss',
+    grip: 0.88,
     name: 'Bulgarian Split Squat',
     pattern: 'Single-leg squat',
     primary: ['quads', 'glutes'],
@@ -355,6 +362,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'rdl',
+    grip: 0.88,
     name: 'Romanian Deadlift',
     pattern: 'Hip hinge',
     primary: ['hams', 'glutes'],
@@ -406,6 +414,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'lateral',
+    grip: 0.88,
     name: 'Lateral Raise',
     pattern: 'Shoulder isolation',
     primary: ['delts'],
@@ -451,6 +460,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'legraise',
+    grip: 0.92,
     name: 'Hanging Leg Raise',
     pattern: 'Core flexion',
     primary: ['abs'],
@@ -496,6 +506,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'hollow',
+    grip: 0.15,
     name: 'Hollow Body Hold',
     pattern: 'Anti-extension core',
     primary: ['abs'],
@@ -545,6 +556,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'bridge',
+    grip: 0.08,
     name: 'Single-Leg Glute Bridge',
     pattern: 'Hip extension',
     primary: ['glutes'],
@@ -593,6 +605,7 @@ export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
     id: 'swing',
+    grip: 0.9,
     name: 'Kettlebell Swing',
     pattern: 'Ballistic hinge · conditioning',
     primary: ['glutes', 'hams'],

@@ -147,7 +147,9 @@ def classify(e):
     if sysn in ("visceral", "nervous"):
         return "eye" if any(k in n for k in EYE_KEEP) else None
     if sysn == "regions":
-        return None  # skin-region surfaces have visible seams; the model is shown without skin
+        # Only the digits: they need soft-tissue volume, the rest stays skinless.
+        keep = ("palm", "surfaces of digits of hand", "nail plate", "surfaces of digits of foot")
+        return "digits" if any(k in n for k in keep) else None
     if sysn == "insertions":
         return "insertion"
     return None
@@ -183,6 +185,11 @@ SEGS = [
     "ankleL",
     "ankleR",
 ]
+# fingers: f<digit><side><joint>; digit 1 = thumb (joint 1 = CMC / first metacarpal)
+for _s in ("L", "R"):
+    for _f in range(1, 6):
+        for _j in range(1, 4):
+            SEGS.append(f"f{_f}{_s}{_j}")
 PARENT = {
     "spine": "root",
     "chest": "spine",
@@ -203,6 +210,11 @@ PARENT = {
     "ankleL": "kneeL",
     "ankleR": "kneeR",
 }
+for _s in ("L", "R"):
+    for _f in range(1, 6):
+        PARENT[f"f{_f}{_s}1"] = "wrist" + _s
+        PARENT[f"f{_f}{_s}2"] = f"f{_f}{_s}1"
+        PARENT[f"f{_f}{_s}3"] = f"f{_f}{_s}2"
 SI = {s: i for i, s in enumerate(SEGS)}
 NEIGH = {s: {s} for s in SEGS}
 for c, p in PARENT.items():
@@ -232,6 +244,17 @@ def bone_segment(sid):
         return "shoulder" + s
     if re.search(r"radius|ulna", n):
         return "elbow" + s
+    m = re.search(
+        r"(proximal|middle|distal) phalanx of (first|second|third|fourth|fifth) finger of hand", n
+    )
+    if m:
+        digit = ["first", "second", "third", "fourth", "fifth"].index(m.group(2)) + 1
+        level = {"proximal": 1, "middle": 2, "distal": 3}[m.group(1)]
+        if digit == 1:  # thumb: metacarpal is joint 1, phalanges 2 and 3
+            level = {"proximal": 2, "distal": 3}[m.group(1)]
+        return f"f{digit}{s}{level}"
+    if "first metacarpal" in n:
+        return f"f1{s}1"
     if re.search(
         r"of hand|carpal|scaphoid|lunate|triquetrum|pisiform|trapez|capitate|hamate|metacarpal", n
     ):
@@ -313,6 +336,59 @@ for a in ("hip", "knee", "ankle", "shoulder", "elbow", "wrist", "scap"):
     J[a + "R"] = m * np.r_[-1, 1, 1]
 for c in ("root", "spine", "chest", "neck", "head"):
     J[c][0] = 0.0
+
+# Finger joints: proximal end of each phalanx (and of the first metacarpal).
+# Flexion axis = finger direction x palm normal, so a positive rotation curls
+# the finger toward the palm.
+FINGERS = {}
+for s in ("L", "R"):
+    mc = B("metacarpal", s)
+    palm_regions = [
+        verts(e)
+        for e in idx
+        if e["cls"] == "digits" and name(e["id"]).lower() == "palm" and side(e["id"]) == s
+    ]
+    palm_n = (
+        (np.concatenate(palm_regions).mean(0) - mc.mean(0)) if palm_regions else np.r_[0, 0, 1.0]
+    )
+    palm_n /= np.linalg.norm(palm_n)
+    for f in range(1, 6):
+        pts = {}
+        for jn in (1, 2, 3):
+            seg = f"f{f}{s}{jn}"
+            vs = [verts(e) for e in bones if e["seg"] == seg]
+            if not vs:
+                continue
+            v = np.concatenate(vs)
+            c = v.mean(0)
+            _, _, vt = np.linalg.svd(v - c, full_matrices=False)
+            ax = vt[0]
+            if np.dot(ax, c - J["wrist" + s]) < 0:
+                ax = -ax  # point distally
+            proj = (v - c) @ ax
+            prox = v[proj < np.quantile(proj, 0.1)].mean(0)
+            dist = v[proj > np.quantile(proj, 0.9)].mean(0)
+            pts[jn] = (prox, dist)
+        for jn, (prox, dist) in pts.items():
+            seg = f"f{f}{s}{jn}"
+            J[seg] = prox
+            d = dist - prox
+            d /= np.linalg.norm(d)
+            toward = palm_n
+            if f == 1:
+                # thumb opposition: curl across the palm toward the index finger
+                idx_mcp = np.concatenate([verts(e) for e in bones if e["seg"] == f"f2{s}1"]).mean(0)
+                across = idx_mcp - prox
+                across /= np.linalg.norm(across)
+                toward = 0.55 * palm_n + 0.75 * across
+            axis = np.cross(d, toward)
+            axis /= np.linalg.norm(axis) + 1e-9
+            FINGERS[seg] = {"axis": np.round(axis, 4).tolist(), "dir": np.round(d, 4).tolist()}
+    mcp = np.mean([J[f"f{f}{s}1"] for f in range(2, 6)], axis=0)
+    J["grip" + s] = 0.5 * (mc.mean(0) + mcp) + palm_n * 0.018
+missing = [sg for sg in SEGS if sg not in J]
+if missing:
+    raise SystemExit(f"missing joints {missing}")
 print("joints", {k: np.round(v, 3).tolist() for k, v in J.items()})
 
 # ----------------------------------------------------------------------------- skin weights
@@ -348,7 +424,11 @@ def soft_weights(e, smooth_iters=8):
         rows = nearest == si
         allowed = [SI[x] for x in NEIGH[SEGS[si]]]
         d0 = D[rows, si][:, None]
-        sub = np.exp(-(D[rows][:, allowed] - d0) / SIGMA)
+        # Short finger bones need tight blending so digits hinge at the joints
+        # instead of bending like rubber; the palm blends a little wider.
+        seg_name = SEGS[si]
+        sigma = 0.005 if seg_name[0] == "f" else 0.009 if seg_name.startswith("wrist") else SIGMA
+        sub = np.exp(-(D[rows][:, allowed] - d0) / sigma)
         sub[~np.isfinite(sub)] = 0
         W[np.ix_(np.where(rows)[0], allowed)] = sub
     W /= W.sum(1, keepdims=True)
@@ -417,7 +497,7 @@ for e in idx:
 # ----------------------------------------------------------------------------- build outputs
 out = {
     g: {"P": [], "N": [], "I": [], "J": [], "W": [], "S": [], "F": [], "M": []}
-    for g in ("muscle", "fascia", "bone", "eye", "skin")
+    for g in ("muscle", "fascia", "bone", "eye", "digits")
 }
 structs = []
 voff = {g: 0 for g in out}
@@ -452,7 +532,8 @@ for e in idx:
             w[:, 1] = 0.6
         rec["seg"] = seg
     else:
-        W = soft_weights(e)
+        near_hand = verts(e)[:, 1].mean() < 0.95 and abs(verts(e)[:, 0].mean()) > 0.2
+        W = soft_weights(e, smooth_iters=3 if cls == "digits" or near_hand else 8)
         j, w = top4(W)
         rec["seg"] = SEGS[int(np.bincount(j[:, 0], minlength=len(SEGS)).argmax())]
     F = np.zeros((len(v), 3), np.float32)
@@ -537,6 +618,8 @@ for e in idx:
     o["F"].append(F)
     o["M"].append(M)
     voff[cls] += len(v)
+    if cls == "digits" and "nail" in nm.lower():
+        rec["nail"] = True
     rec["mesh"] = cls
     structs.append(rec)
 
@@ -545,7 +628,7 @@ for e in idx:
 # close to other geometry means the surface is tucked under a neighbour.
 # Two variants: with every structure, and with superficial muscles removed
 # (used by the "deep muscles" layer).
-render = [g for g in ("muscle", "fascia", "bone", "eye") if out[g]["P"]]
+render = [g for g in ("muscle", "fascia", "bone", "eye", "digits") if out[g]["P"]]
 allP = np.concatenate([np.concatenate(out[g]["P"]) for g in render])
 allS = np.concatenate([np.concatenate(out[g]["S"]) for g in render])
 superficial_sid = np.array([bool(st.get("superficial")) for st in structs])
@@ -565,9 +648,6 @@ for g in render:
         aos.append(np.clip(1 - 0.85 * occ, 0.25, 1))
     ao = np.c_[aos[0], aos[1]].astype(np.float32)
     out[g]["A"] = [ao]
-for g in ("skin",):
-    if out[g]["P"]:
-        out[g]["A"] = [np.ones((sum(len(x) for x in out[g]["P"]), 2), np.float32)]
 
 for g, o in out.items():
     if not o["P"]:
@@ -606,8 +686,8 @@ for s, k in (("L", 1), ("R", -1)):
     mk["ball" + s] = [B("metatarsal", s)[:, 0].mean(), sole, B("metatarsal", s)[:, 2].max() - 0.008]
     mk["instep" + s] = (B("^navicular", s).mean(0) + np.r_[0, 0.02, 0]).tolist()
     mc = B("metacarpal", s)
-    mk["hand" + s] = mc.mean(0).tolist()
-    mk["palm" + s] = (mc.mean(0) + np.r_[0, 0, 0.018]).tolist()
+    mk["hand" + s] = J["grip" + s].tolist()  # grip / palm-contact point
+    mk["palm" + s] = J["grip" + s].tolist()
     pat = B("^patella$", s)
     mk["kneeCap" + s] = pat[pat[:, 2] > pat[:, 2].max() - 0.004].mean(0).tolist()
     gl = [
@@ -693,7 +773,8 @@ dump_json(
         },
         "segments": SEGS,
         "parent": PARENT,
-        "joints": {k: [round(float(x), 5) for x in v] for k, v in J.items()},
+        "joints": {k: [round(float(x), 5) for x in v] for k, v in J.items() if k in SEGS},
+        "fingers": FINGERS,
         "markers": markers,
         "structures": structs,
     },

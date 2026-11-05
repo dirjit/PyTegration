@@ -392,8 +392,11 @@ export class Stage {
     this.scene.add(this.rig.object);
     this.rig.bones.wristL.add(this.props.dbL);
     this.rig.bones.wristR.add(this.props.dbR);
-    this.props.dbL.position.set(0, -0.085, 0.022);
-    this.props.dbR.position.set(0, -0.085, 0.022);
+    for (const s of ['L', 'R']) {
+      const db = this.props['db' + s];
+      db.position.copy(this.rig.markers['hand' + s].position);
+      db.rotation.set(0, Math.PI / 2, 0);
+    }
     this.rig.meshes.muscle && Object.values(this.rig.meshes).forEach((m) => m.layers.enable(1));
     if (this.ghosts.length) {
       this.ghosts.forEach((g) => this.scene.remove(g.object));
@@ -462,6 +465,8 @@ export class Stage {
       ? this.poses.map((p, i) => addPose(p, expandDelta(ex.fault.delta[i] || ex.fault.delta[0] || {})))
       : this.poses;
     this.cycle = ex.tempo.reduce((s, seg) => s + seg.dur, 0);
+    if (this.rig.setGrip) this.rig.setGrip(ex.grip ?? 0.18);
+    this.ghosts.forEach((g) => g.setGrip?.(ex.grip ?? 0.18));
     if (!keepTime) { this.time = 0; this.rep = 0; }
     this.traceHistory = [];
 

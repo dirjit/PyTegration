@@ -30,7 +30,7 @@ const read = (g, k, spec) => {
 };
 const acc = (arr, type, normalized = false) => doc.createAccessor().setArray(arr).setType(type).setNormalized(normalized).setBuffer(buf);
 
-for (const g of ['muscle', 'fascia', 'bone', 'eye', 'skin']) {
+for (const g of ['muscle', 'fascia', 'bone', 'eye', 'digits']) {
   const sp = path.join(DIR, `${g}.spec.json`);
   if (!fs.existsSync(sp)) continue;
   const spec = JSON.parse(fs.readFileSync(sp, 'utf8'));

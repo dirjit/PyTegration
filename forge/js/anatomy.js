@@ -32,7 +32,11 @@ const REST = {
   shoulderL: [0, 0, 7], shoulderR: [0, 0, -7],
   elbowL: [-6, 0, 0], elbowR: [-6, 0, 0],
 };
-const MESHES = ['muscle', 'fascia', 'bone', 'eye', 'skin'];
+const MESHES = ['muscle', 'fascia', 'bone', 'eye', 'digits'];
+// Finger joint ranges (deg) at full grip: knuckle, middle, end joint.
+// Thumb: CMC opposition, MCP, IP. Real ranges, scaled by the grip amount.
+const FINGER_MAX = { 1: [38, 45, 50], 2: [78, 96, 58], 3: [82, 100, 60], 4: [84, 100, 58], 5: [86, 98, 56] };
+const RELAXED_GRIP = 0.18;
 const STATE_W = 1024;
 
 export const ANATOMY_CREDIT = 'Anatomy: Z-Anatomy (CC BY-SA 4.0), based on BodyParts3D © DBCLS (CC BY 4.0); adapted for FORGE.';
@@ -140,7 +144,7 @@ vec3 aPerturb(vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir){
 
 function patchMaterial(mat, kind, rig, S) {
   const muscle = kind === 'muscle' || kind === 'fascia';
-  const sss = { muscle: [0.42, 0.16, 0.1], fascia: [0.2, 0.12, 0.08], bone: [0.18, 0.12, 0.08], skin: [0.5, 0.2, 0.12], eye: [0.1, 0.1, 0.1] }[kind];
+  const sss = { muscle: [0.42, 0.16, 0.1], fascia: [0.2, 0.12, 0.08], bone: [0.18, 0.12, 0.08], digits: [0.4, 0.18, 0.12], eye: [0.1, 0.1, 0.1] }[kind];
   const m3 = new THREE.Matrix3().setFromMatrix4(S);
   const scale = new THREE.Vector3().setFromMatrixScale(S);
   mat.userData.uniforms = {
@@ -161,6 +165,7 @@ function patchMaterial(mat, kind, rig, S) {
     if (muscle) sh.defines.ANAT_MUSCLE = '';
     if (kind === 'eye') sh.defines.ANAT_EYE = '';
     if (kind === 'bone') sh.defines.ANAT_BONE = '';
+    if (kind === 'digits') sh.defines.ANAT_DIGITS = '';
     // ---------------------------------------------------------------- vertex
     sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
 attribute float sid;
@@ -222,10 +227,18 @@ float aVar = aNoise3(vBindPos * 16.0) * 0.6 + aNoise3(vBindPos * 47.0) * 0.4;
 #ifdef ANAT_EYE
   if (vVar > 0.5) diffuseColor.rgb = vec3(0.24, 0.16, 0.11);
 #endif
+#ifdef ANAT_DIGITS
+  // finger pulp: pale, slightly mottled soft tissue; nail plates lighter and glossier
+  diffuseColor.rgb *= 0.9 + 0.14 * aVar;
+  if (vVar > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.72, 0.66), 0.7);
+#endif
 diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.2, 0.55, 0.55), uFault * 0.5);`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 #ifdef ANAT_MUSCLE
   roughnessFactor = clamp(mix(roughnessFactor, 0.4, smoothstep(0.12, 0.8, vTendon)) + (aVar - 0.5) * 0.08, 0.05, 1.0);
+#endif
+#ifdef ANAT_DIGITS
+  if (vVar > 0.5) roughnessFactor = 0.22;
 #endif`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 #ifdef ANAT_MUSCLE
@@ -329,7 +342,10 @@ export class AnatomyRig {
     // ---------------------------------------------------------------- state
     this.state = new Float32Array(STATE_W * 4);
     for (let i = 0; i < STATE_W; i++) this.state[i * 4 + 2] = 1; // visible
-    meta.structures.forEach((s, i) => { if (/iris/i.test(s.name)) this.state[i * 4 + 3] = 1; });
+    meta.structures.forEach((s, i) => { if (/iris/i.test(s.name) || s.nail) this.state[i * 4 + 3] = 1; });
+    this.grip = RELAXED_GRIP;
+    this.fingerQ = {};
+    for (const [seg, f] of Object.entries(meta.fingers || {})) this.fingerQ[seg] = { axis: new THREE.Vector3(...f.axis), digit: +seg[1], joint: +seg[3] };
     this.stateTex = new THREE.DataTexture(this.state, STATE_W, 1, THREE.RGBAFormat, THREE.FloatType);
     this.stateTex.needsUpdate = true;
 
@@ -343,7 +359,7 @@ export class AnatomyRig {
         fascia: { color: 0x7e231b, roughness: 0.45, sheen: 0.4, sheenRoughness: 0.4, sheenColor: 0xe6d8cc, clearcoat: 0.12, clearcoatRoughness: 0.4, specularIntensity: 0.5 },
         bone: { color: 0xcdbfa6, roughness: 0.62, specularIntensity: 0.35, sheen: 0.15, sheenColor: 0xffffff },
         eye: { color: 0xf0ebe5, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.08 },
-        skin: { color: 0xc48e74, roughness: 0.55, sheen: 0.5, sheenRoughness: 0.5, sheenColor: 0xffc6ad, specularIntensity: 0.45 },
+        digits: { color: 0xc07f70, roughness: 0.6, sheen: 0.25, sheenRoughness: 0.6, sheenColor: 0xf3c2b4, specularIntensity: 0.35 },
       }[kind];
       return new THREE.MeshPhysicalMaterial({ metalness: 0, ...base });
     };
@@ -400,6 +416,11 @@ export class AnatomyRig {
       R['scap' + sd] = sc;
       R['shoulder' + sd] = sc.clone().invert().multiply(sh);
     }
+    // fingers: curl toward the palm about each finger's own flexion axis
+    for (const [seg, f] of Object.entries(this.fingerQ)) {
+      const deg = FINGER_MAX[f.digit][f.joint - 1] * this.grip;
+      R[seg] = new THREE.Quaternion().setFromAxisAngle(f.axis, deg * DEG);
+    }
     const W = {}; const G = {};
     for (const s of this.meta.segments) {
       const p = this.meta.parent[s];
@@ -410,6 +431,9 @@ export class AnatomyRig {
       else b.quaternion.copy(G[s]);
     }
   }
+
+  /** 0 = fingers straight (palm flat), 1 = full grip around a bar. */
+  setGrip(v) { this.grip = THREE.MathUtils.clamp(v, 0, 1); }
 
   /** Measure every muscle's current length and set its contraction. */
   updateContraction() {
@@ -485,10 +509,10 @@ export class AnatomyRig {
     });
     this.stateTex.needsUpdate = true;
     for (const [kind, m] of Object.entries(this.meshes)) {
-      if (mode === 'ghost') { m.visible = kind !== 'skin' && kind !== 'eye'; continue; }
-      if (kind === 'skin') m.visible = mode === 'skin';
-      else if (kind === 'eye') m.visible = true;
-      else m.visible = mode !== 'skin';
+      if (mode === 'ghost') { m.visible = kind !== 'eye'; continue; }
+      if (kind === 'eye') m.visible = true;
+      else if (kind === 'digits') m.visible = mode !== 'skeleton';
+      else m.visible = true;
     }
     for (const m of Object.values(this.mats)) if (m.userData.uniforms) m.userData.uniforms.uDeep.value = mode === 'deep' || mode === 'skeleton' ? 1 : 0;
   }
@@ -509,7 +533,7 @@ export class AnatomyRig {
 
   /** Raycast the visible anatomy; returns the structure id or null. */
   pick(raycaster) {
-    const targets = ['muscle', 'fascia', 'bone', 'eye'].map((k) => this.meshes[k]).filter((m) => m && m.visible);
+    const targets = ['muscle', 'fascia', 'bone', 'eye', 'digits'].map((k) => this.meshes[k]).filter((m) => m && m.visible);
     const hits = raycaster.intersectObjects(targets, false);
     for (const h of hits) {
       const sid = Math.round(h.object.geometry.getAttribute('sid').getX(h.face.a));
