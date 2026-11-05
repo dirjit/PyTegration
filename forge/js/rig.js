@@ -94,6 +94,48 @@ function torsoGeo(profile, radial = 40) {
 const SPHERE = new THREE.SphereGeometry(1, 30, 22);
 const SPHERE_LO = new THREE.SphereGeometry(1, 18, 12);
 
+/**
+ * Muscle belly shapes, built from a unit sphere so UVs (fibres run along v)
+ * and the |y| tendon mask stay meaningful:
+ *  - 'belly' fusiform: full in the upper third, tapering into tendon ends
+ *  - 'block' superellipsoid: the flat, squarish segments of the rectus abdominis
+ *  - 'fan'   wide at one end, converging to a tendon (pecs, lats, delts)
+ */
+function shapeGeo(kind) {
+  const g = new THREE.SphereGeometry(1, 34, 26);
+  const P = g.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < P.count; i++) {
+    v.fromBufferAttribute(P, i);
+    const y = v.y;
+    if (kind === 'belly') {
+      const taper = 0.62 + 0.38 * Math.pow(1 - Math.abs(y), 0.6);
+      v.x *= taper; v.z *= taper;
+      v.y = y + 0.14 * (1 - y * y); // belly peak sits proximally
+    } else if (kind === 'block') {
+      const e = 0.5;
+      v.set(Math.sign(v.x) * Math.pow(Math.abs(v.x), e), Math.sign(v.y) * Math.pow(Math.abs(v.y), e), v.z);
+      v.z *= 0.9;
+    } else if (kind === 'fan') {
+      const w = 0.45 + 0.55 * (y + 1) / 2; // wide at +y, narrow at -y
+      v.x *= w * 1.05;
+      v.z *= 0.8 + 0.2 * w;
+    }
+    P.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  g.userData.unitY = Float32Array.from({ length: P.count }, (_, i) => SPHERE_Y(g, i));
+  return g;
+}
+function SPHERE_Y(g, i) {
+  // recover the original sphere latitude from the uv (v runs pole to pole)
+  return 1 - 2 * g.attributes.uv.getY(i);
+}
+const BELLY = shapeGeo('belly');
+const BLOCK = shapeGeo('block');
+const FAN = shapeGeo('fan');
+const SHAPE_BY_GROUP = { abs: BLOCK, chest: FAN, lats: FAN, traps: FAN, upperback: FAN };
+
 // Muscle catalogue: [group, bone, position, scale, rotation(deg), bulge]
 // Positions are for the LEFT side (+X) and mirrored automatically.
 // Bellies are unit spheres scaled into anatomical shapes and sunk into the
@@ -155,9 +197,9 @@ export const MUSCLE_LABEL = {
 };
 
 // Colours for muscle states (shared by setHighlight).
-const C_IDLE = new THREE.Color(0xb35e50);
-const C_PRIMARY = new THREE.Color(0xe8432a);
-const C_SECOND = new THREE.Color(0xe08a3c);
+const C_IDLE = new THREE.Color(0.92, 0.9, 0.9);
+const C_PRIMARY = new THREE.Color(1.3, 0.78, 0.66);
+const C_SECOND = new THREE.Color(1.22, 1.0, 0.72);
 const E_PRIMARY = new THREE.Color(0xff2e12);
 const E_SECOND = new THREE.Color(0xff8a1f);
 
@@ -169,31 +211,46 @@ function fiberTextures() {
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
-  g.fillStyle = '#d4d4d4';
+  g.fillStyle = '#cfcfcf';
   g.fillRect(0, 0, W, H);
-  for (let i = 0; i < 1400; i++) {
-    const x = Math.random() * W;
-    const l = Math.floor(165 + Math.random() * 90);
-    g.strokeStyle = `rgb(${l},${l},${l})`;
-    g.lineWidth = 0.6 + Math.random() * 1.8;
-    g.beginPath();
-    const amp = 2 + Math.random() * 4; const ph = Math.random() * 6;
-    for (let y = 0; y <= H; y += 16) g.lineTo(x + Math.sin(y / 70 + ph) * amp, y);
-    g.stroke();
+  // low-frequency mottling so no two areas read identical
+  for (let i = 0; i < 140; i++) {
+    const x = Math.random() * W; const y = Math.random() * H; const r = 20 + Math.random() * 70;
+    const l = Math.floor(185 + Math.random() * 60);
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, `rgba(${l},${l},${l},0.35)`);
+    grd.addColorStop(1, `rgba(${l},${l},${l},0)`);
+    g.fillStyle = grd;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  // fascia sheen streaks
-  for (let i = 0; i < 40; i++) {
-    g.fillStyle = `rgba(255,255,255,${0.04 + Math.random() * 0.06})`;
-    g.fillRect(Math.random() * W, 0, 2 + Math.random() * 6, H);
+  // fascicles: bundles of fine fibres with darker grooves between bundles
+  let x = 0;
+  while (x < W) {
+    const bw = 5 + Math.random() * 9;
+    const ph = Math.random() * 6; const amp = 1.5 + Math.random() * 3;
+    for (let f = 0; f < bw; f += 0.9) {
+      const l = Math.floor(175 + Math.random() * 80);
+      g.strokeStyle = `rgb(${l},${l},${l})`;
+      g.lineWidth = 0.5 + Math.random();
+      g.beginPath();
+      for (let y = 0; y <= H; y += 12) g.lineTo(x + f + Math.sin(y / 80 + ph) * amp, y);
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(70,70,70,0.55)';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    for (let y = 0; y <= H; y += 12) g.lineTo(x + bw + Math.sin(y / 80 + ph) * amp, y);
+    g.stroke();
+    x += bw + 1.5;
   }
   const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(3, 1);
+  map.repeat.set(4, 1);
   map.anisotropy = 4;
   const bump = new THREE.CanvasTexture(c);
   bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
-  bump.repeat.set(3, 1);
+  bump.repeat.set(4, 1);
   FIBER = { map, bump };
   return FIBER;
 }
@@ -210,28 +267,28 @@ export function createMaterials({ ghost = false } = {}) {
   }
   const { map, bump } = fiberTextures();
   const skin = new THREE.MeshPhysicalMaterial({
-    color: 0xb88a72, roughness: 0.6, metalness: 0,
-    sheen: 0.45, sheenRoughness: 0.55, sheenColor: 0xe8a98c,
-    clearcoat: 0.08, emissive: 0x000000,
+    color: 0xb48770, roughness: 0.68, metalness: 0, vertexColors: true,
+    sheen: 0.35, sheenRoughness: 0.7, sheenColor: 0xd99a80, specularIntensity: 0.35,
+    emissive: 0x000000,
   });
   const hair = new THREE.MeshStandardMaterial({ color: 0x241a16, roughness: 0.85 });
   const nail = skin;
   // Deep muscle layer between the bellies, and pale tendon/fascia at joints.
   const deep = new THREE.MeshPhysicalMaterial({
-    color: 0x86392f, map, bumpMap: bump, bumpScale: 1.2, roughness: 0.55,
-    clearcoat: 0.25, clearcoatRoughness: 0.4, sheen: 0.4, sheenColor: 0xff8f7a, emissive: 0x000000,
+    color: 0x6e2a23, map, bumpMap: bump, bumpScale: 2, roughness: 0.7, vertexColors: true,
+    specularIntensity: 0.4, sheen: 0.2, sheenColor: 0xff8f7a, emissive: 0x000000,
   });
   const tendon = new THREE.MeshPhysicalMaterial({
-    color: 0x9a7f6d, roughness: 0.6, clearcoat: 0.1, clearcoatRoughness: 0.5,
+    color: 0xc2ab98, roughness: 0.5, vertexColors: true, specularIntensity: 0.5,
     sheen: 0.3, sheenColor: 0xf0d6c4, emissive: 0x000000,
   });
   const mats = { skin, hair, nail, deep, tendon };
   MUSCLE_GROUPS.forEach((k) => {
     mats[k] = new THREE.MeshPhysicalMaterial({
-      color: C_IDLE.clone(), map, bumpMap: bump, bumpScale: 1.6,
-      roughness: 0.48, metalness: 0,
-      clearcoat: 0.35, clearcoatRoughness: 0.35,
-      sheen: 0.6, sheenRoughness: 0.4, sheenColor: 0xff9f8f,
+      color: C_IDLE.clone(), map, bumpMap: bump, bumpScale: 2.6, vertexColors: true,
+      roughness: 0.56, metalness: 0, specularIntensity: 0.55,
+      clearcoat: 0.12, clearcoatRoughness: 0.6, // thin moist film, not plastic
+      sheen: 0.25, sheenRoughness: 0.6, sheenColor: 0xff8f80,
       emissive: 0x000000, emissiveIntensity: 1,
     });
   });
@@ -372,7 +429,7 @@ export class Rig {
       for (const s of ['L', 'R']) {
         const k = s === 'R' ? -1 : 1;
         const boneName = SIDED.includes(bone) ? bone + s : bone;
-        this._part(SPHERE, this.mats[group], this.bones[boneName],
+        this._part(SHAPE_BY_GROUP[group] || BELLY, this.mats[group], this.bones[boneName],
           [pos[0] * k, pos[1], pos[2]], [scale[0] * 1.1, scale[1] * 1.05, scale[2] * 1.08], [rot[0], rot[1] * k, rot[2] * k],
           { group, bulge });
       }
@@ -397,8 +454,16 @@ export class Rig {
       const g = p.geo.clone();
       const pos0 = g.attributes.position;
       const count = pos0.count;
+      const unitY = p.geo.userData.unitY;
+      const yAt = (i) => (unitY ? unitY[i] : pos0.getY(i));
       const prof = p.bulge ? new Float32Array(count) : null;
-      if (prof) for (let i = 0; i < count; i++) prof[i] = Math.max(0, 1 - Math.abs(pos0.getY(i)) * 1.15);
+      if (prof) for (let i = 0; i < count; i++) prof[i] = Math.max(0, 1 - Math.abs(yAt(i)) * 1.15);
+      const muscle = !!p.group;
+      const tend = muscle ? new Float32Array(count) : null;
+      if (tend) {
+        // abs blocks have no tendon ends (their borders are the deep layer)
+        if (p.group !== 'abs') for (let i = 0; i < count; i++) tend[i] = smooth(0.6, 1.0, Math.abs(yAt(i)));
+      }
 
       e.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
       q.setFromEuler(e);
@@ -433,6 +498,29 @@ export class Rig {
         si.set([own, par, chi, 0], i * 4);
         sw.set([wo, wp, wc, 0], i * 4);
       }
+      // Vertex colour: muscles carry their own tissue colour (material colour is
+      // a multiplier for highlighting); tendon ends fade to pale aponeurosis;
+      // rims that dive under neighbours are darkened (cheap ambient occlusion).
+      const col = new Float32Array(count * 3).fill(1);
+      if (muscle) {
+        const c0 = new THREE.Vector3(); g.computeBoundingSphere(); c0.copy(g.boundingSphere.center);
+        const t0 = THREE.MathUtils.clamp(c0.clone().sub(a).dot(ab) / L2, 0, 1);
+        const out = c0.clone().sub(a.clone().addScaledVector(ab, t0)).normalize();
+        const N = g.attributes.normal;
+        const jitter = 0.92 + Math.random() * 0.14;
+        // tissue + tendon colours authored in sRGB, converted to linear
+        const tissue = new THREE.Color().setRGB(0.62 * jitter, 0.2 * jitter, 0.17 * jitter, THREE.SRGBColorSpace);
+        const tendon = new THREE.Color().setRGB(0.84, 0.74, 0.66, THREE.SRGBColorSpace);
+        for (let i = 0; i < count; i++) {
+          n.fromBufferAttribute(N, i);
+          const ao = 0.35 + 0.65 * smooth(-0.45, 0.6, n.dot(out));
+          const tt = tend[i];
+          col[i * 3] = (tissue.r + (tendon.r - tissue.r) * tt) * ao;
+          col[i * 3 + 1] = (tissue.g + (tendon.g - tissue.g) * tt) * ao;
+          col[i * 3 + 2] = (tissue.b + (tendon.b - tissue.b) * tt) * ao;
+        }
+      }
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
       g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
 
@@ -448,7 +536,7 @@ export class Rig {
       g.userData.disp = disp;
       g.userData.hasBulge = !!prof;
       for (const k of Object.keys(g.attributes)) {
-        if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(k)) g.deleteAttribute(k);
+        if (!['position', 'normal', 'uv', 'color', 'skinIndex', 'skinWeight'].includes(k)) g.deleteAttribute(k);
       }
       if (!byMat.has(p.mat)) byMat.set(p.mat, { geos: [], groups: new Set() });
       const entry = byMat.get(p.mat);
@@ -523,11 +611,11 @@ export class Rig {
       if (primary.includes(g)) {
         mat.color.copy(C_PRIMARY);
         mat.emissive.copy(E_PRIMARY);
-        mat.emissiveIntensity = 0.08 + 0.5 * intensity;
+        mat.emissiveIntensity = 0.03 + 0.26 * intensity;
       } else if (secondary.includes(g)) {
         mat.color.copy(C_SECOND);
         mat.emissive.copy(E_SECOND);
-        mat.emissiveIntensity = 0.04 + 0.16 * intensity;
+        mat.emissiveIntensity = 0.02 + 0.08 * intensity;
       } else {
         mat.color.copy(C_IDLE);
         mat.emissive.setHex(0x000000);

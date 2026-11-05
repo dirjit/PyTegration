@@ -250,7 +250,7 @@ export class Stage {
     // Post-processing: subtle bloom so active muscles and the visor glow.
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.55, 0.78);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.5, 0.86);
     composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
     this.composer = composer;
@@ -270,7 +270,7 @@ export class Stage {
 
   _lights() {
     const s = this.scene;
-    s.add(new THREE.HemisphereLight(0xa9bddc, 0x10131a, 1.1));
+    s.add(new THREE.HemisphereLight(0xb7c4dc, 0x1a1210, 0.75));
     const key = new THREE.DirectionalLight(0xfff1e0, 3.4);
     key.position.set(2.5, 5, 3.2);
     key.castShadow = true;
