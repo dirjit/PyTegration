@@ -5,6 +5,7 @@
 import { Stage } from './stage.js';
 import { EXERCISES, EX_BY_ID } from './exercises.js';
 import { MUSCLE_LABEL } from './rig.js';
+import { loadAnatomyAssets, chooseLOD } from './anatomy.js';
 import {
   PRINCIPLES, SESSIONS, PHASES, DAY_INFO, PROGRESSION_RULES, FIELD_NOTES,
 } from './program.js';
@@ -76,6 +77,7 @@ if (webglOK()) {
 // Form Lab
 // -----------------------------------------------------------------------------
 const GROUPS = [
+  ['Anatomy demo', ['elbow']],
   ['Push', ['pushup', 'pike', 'dip']],
   ['Pull', ['pullup', 'row']],
   ['Legs & hips', ['bss', 'rdl', 'bridge']],
@@ -97,6 +99,7 @@ if (webglOK()) {
     $('#labLoading').remove();
     // On touch screens let vertical swipes scroll the page; horizontal drags orbit.
     if (window.matchMedia('(pointer: coarse)').matches) lab.renderer.domElement.style.touchAction = 'pan-y';
+    loadAnatomy();
   } catch (e) {
     console.warn(e);
     $('#labLoading').textContent = '3D unavailable on this device — the form cues on the right still apply.';
@@ -228,6 +231,67 @@ if (lab) {
   });
 }
 selectExercise('pushup');
+
+// -----------------------------------------------------------------------------
+// Anatomical model: load, swap in, inspect
+// -----------------------------------------------------------------------------
+// Handles for debugging / automated checks.
+window.__forge = { get lab() { return lab; }, get hero() { return hero; } };
+
+async function loadAnatomy() {
+  const status = $('#anatStatus');
+  const lod = new URLSearchParams(location.search).get('quality') || chooseLOD();
+  status.textContent = `Loading anatomical model (${lod === 'standard' ? 'high detail, ~12 MB' : 'mobile detail, ~5 MB'})…`;
+  try {
+    const assets = await loadAnatomyAssets('assets/anatomy', lod);
+    lab.useAnatomy(assets);
+    if (current) selectExercise(current.id);
+    hero?.useAnatomy(assets);
+    status.textContent = '';
+  } catch (e) {
+    console.warn('anatomy model failed to load', e);
+    status.textContent = 'The anatomical model could not be loaded; showing the simplified figure.';
+  }
+}
+
+function showInspect(sid) {
+  const card = $('#inspectCard');
+  if (sid == null || !lab?.rig?.meta) { card.hidden = true; $('#inspectHint').hidden = false; return; }
+  const st = lab.rig.meta.structures[sid];
+  const clean = (t) => (t || '').replace(/[()]/g, '');
+  $('#inspName').textContent = clean(st.name) + (st.side ? (st.side === 'L' ? ' (left)' : ' (right)') : '');
+  $('#inspLatin').textContent = clean(st.latin);
+  const region = (st.parent || '').split('.').pop().replace(/_[lr]$/, '').replace(/_/g, ' ');
+  const kind = { muscle: 'Muscle', fascia: 'Fascia / aponeurosis', bone: 'Bone', eye: 'Eye', skin: 'Skin' }[st.type] || st.type;
+  $('#inspMeta').textContent = `${kind}${region ? ' · ' + region : ''}${st.group && MUSCLE_LABEL[st.group] ? ' · trained as ' + MUSCLE_LABEL[st.group] : ''}`;
+  card.hidden = false;
+  $('#inspectHint').hidden = true;
+  $('#inspIsolate').classList.toggle('on', lab.rig.isolated === sid);
+  $('#inspIsolate').setAttribute('aria-pressed', String(lab.rig.isolated === sid));
+}
+
+if (lab) {
+  const cv = lab.renderer.domElement;
+  let down = null;
+  cv.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+  cv.addEventListener('pointerup', (e) => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5 || !lab.rig.isAnatomy) return;
+    const sid = lab.pick(e.clientX, e.clientY);
+    if (lab.rig.isolated != null && sid !== lab.rig.isolated) return; // keep isolation stable
+    lab.select(sid);
+    showInspect(sid);
+  });
+  $('#inspClear').addEventListener('click', () => {
+    if (lab.rig.isolated != null) lab.rig.isolate(false);
+    lab.select(null);
+    showInspect(null);
+  });
+  $('#inspIsolate').addEventListener('click', () => {
+    if (!lab.rig.isAnatomy || lab.selected == null) return;
+    lab.rig.isolate(lab.rig.isolated == null);
+    showInspect(lab.selected);
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Program

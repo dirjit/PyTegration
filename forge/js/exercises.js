@@ -16,6 +16,47 @@ const HANDS = 'mid:handL,handR';
 export const EXERCISES = [
   // ---------------------------------------------------------------------------
   {
+    id: 'elbow',
+    name: 'Elbow Flexion',
+    pattern: 'Anatomy demo · biceps vs triceps',
+    primary: ['biceps'],
+    secondary: ['triceps', 'forearms'],
+    props: [],
+    view: 'side',
+    frame: ['shoulderL', 'elbowL', 'wristL', 'handL'],
+    anchor: { point: FEET, target: [0, 0, 0] },
+    flatFeet: true,
+    poses: [
+      { shoulder: [-4, 0, 8], elbow: [-6], wrist: [0] },
+      { shoulder: [-10, 0, 8], elbow: [-138], wrist: [-8] },
+    ],
+    tempo: [
+      { label: 'Flex', dur: 3.2, from: 0, to: 1, tension: 1 },
+      { label: 'Hold', dur: 1.2, from: 1, to: 1, tension: 1 },
+      { label: 'Extend', dur: 3.2, from: 1, to: 0, tension: 0.6 },
+      { label: 'Rest', dur: 1.2, from: 0, to: 0, tension: 0.2 },
+    ],
+    tempoCode: '3-1-3-1 (slow demo)',
+    angles: [{ label: 'Elbow', pts: ['shoulderL', 'elbowL', 'wristL'], good: [30, 60] }],
+    trace: { pt: 'handL', label: 'Hand path' },
+    prescription: 'Demonstration',
+    rest: '—',
+    cues: [
+      'Watch the biceps brachii: as the elbow closes, the belly shortens and thickens while its distal tendon stays fixed to the radius.',
+      'Brachialis (under the biceps) and brachioradialis (forearm) share the work — they are the true prime movers of elbow flexion.',
+      'The triceps on the back of the arm lengthens and slims as its antagonist contracts; its tendon stays anchored to the olecranon.',
+      'Use the scrubber or 0.25× speed to inspect any phase; click a muscle to name and isolate it.',
+    ],
+    mistakes: [
+      'Letting the upper arm drift forward turns a curl into a front raise — keep the humerus vertical.',
+      'Dropping the weight on the way down: the lengthening phase is where much of the growth stimulus is.',
+    ],
+    breathing: 'Exhale as you flex, inhale as you lower.',
+    progressions: ['Band curl', 'Dumbbell curl', 'Incline curl (biceps lengthened)', 'Chin-up'],
+    insight: 'Muscle volume is roughly constant: when a muscle shortens it must get wider. The model scales each muscle\'s cross-section by √(rest length ÷ current length), measured live between its real attachment points.',
+  },
+  // ---------------------------------------------------------------------------
+  {
     id: 'pushup',
     name: 'Push-Up',
     pattern: 'Horizontal push',
@@ -27,7 +68,7 @@ export const EXERCISES = [
     ik: { joints: ['shoulder', 'shoulder'], axes: [0, 1], point: 'handL', dims: ['z', 'x'] },
     poses: [
       { root: [78], neck: [6], shoulder: [-63, 0, 18], elbow: [-3], wrist: [-102], ankle: [6] },
-      { root: [89], neck: [8], spine: [-2], shoulder: [10, 0, 38], elbow: [-120], wrist: [-80], ankle: [8] },
+      { root: [89], neck: [8], spine: [-2], shoulder: [10, 0, 38], elbow: [-96], wrist: [-80], ankle: [8] },
     ],
     tempo: [
       { label: 'Lower', dur: 3, from: 0, to: 1, tension: 0.9 },
@@ -222,13 +263,10 @@ export const EXERCISES = [
     props: ['bar'],
     view: 'threeQuarter',
     anchor: { point: HANDS, target: [0, 1.1, 0], second: { point: 'mid:heelL,heelR', y: 0 } },
-    ik: [
-      { joints: 'shoulder', point: 'mid:heelL,heelR' },
-      { joints: 'shoulder', axes: [1], point: 'handL', dims: ['x'] },
-    ],
+    ik: { joints: 'shoulder', point: 'mid:heelL,heelR' },
     poses: [
-      { root: [-62], shoulder: [-64, 0, 16], elbow: [-2], ankle: [-6] },
-      { root: [-70], chest: [-10], shoulder: [38, 0, 42], elbow: [-135], ankle: [-6] },
+      { root: [-62], shoulder: [-100, 0, 16], elbow: [-2], ankle: [-6] },
+      { root: [-70], chest: [-10], shoulder: [20, 0, 28], elbow: [-135], ankle: [-6] },
     ],
     tempo: [
       { label: 'Pull', dur: 1, from: 0, to: 1, ease: 'drive', tension: 1 },

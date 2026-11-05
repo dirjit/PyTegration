@@ -11,11 +11,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
   Rig, createMaterials, expandPose, expandDelta, addPose, lerpPose, DEG, SIDE_JOINTS,
 } from './rig.js';
+import { AnatomyRig } from './anatomy.js';
 
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
@@ -190,19 +190,19 @@ export class Stage {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.opts.pixelRatio || 2));
     renderer.setSize(w, h);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.NeutralToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMapping = THREE.AgXToneMapping; // filmic, keeps deep reds from going pink
+    renderer.toneMappingExposure = 1.1;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
     this.renderer = renderer;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a0d13);
-    scene.fog = new THREE.Fog(0x0a0d13, 8, 18);
+    scene.background = studioBackdrop();
+    scene.fog = new THREE.Fog(0x1d1e21, 9, 20);
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.9;
+    scene.environmentIntensity = 0.55;
     this.scene = scene;
 
     const camera = new THREE.PerspectiveCamera(this.opts.hero ? 32 : 36, w / h, 0.05, 60);
@@ -216,7 +216,9 @@ export class Stage {
     controls.maxDistance = 9;
     controls.maxPolarAngle = Math.PI * 0.495;
     controls.target.set(0, 1, 0);
-    controls.enablePan = false;
+    controls.enablePan = !this.opts.hero;
+    controls.screenSpacePanning = true;
+    controls.minDistance = 0.45;
     if (this.opts.hero) {
       controls.enableZoom = false;
       controls.autoRotate = true;
@@ -250,13 +252,15 @@ export class Stage {
 
     this._overlays();
 
-    // Post-processing: subtle bloom so active muscles and the visor glow.
-    const composer = new EffectComposer(renderer);
+    // Post-processing: multisampled render + output (tone mapping, sRGB).
+    // No bloom or depth-of-field: anatomy stays sharp everywhere.
+    const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.25, 0.5, 0.97);
-    composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
     this.composer = composer;
+    this._frameTimes = [];
+    this.quality = 1;
 
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'label-layer';
@@ -272,56 +276,58 @@ export class Stage {
   }
 
   _lights() {
+    // Soft studio rig: large warm-neutral key with soft shadows, cool fill,
+    // separating rim and a little sky/ground bounce. Shading stays readable
+    // in both shadows and highlights.
     const s = this.scene;
-    s.add(new THREE.HemisphereLight(0xb7c4dc, 0x1a1210, 0.5));
-    const key = new THREE.DirectionalLight(0xfff1e0, 3.4);
-    key.position.set(2.5, 5, 3.2);
+    s.add(new THREE.HemisphereLight(0xdfe4ea, 0x2a2622, 0.45));
+    const key = new THREE.DirectionalLight(0xfff4ea, 2.4);
+    key.position.set(2.2, 4.6, 3.4);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.left = -2.5; key.shadow.camera.right = 2.5;
-    key.shadow.camera.top = 3.2; key.shadow.camera.bottom = -1.5;
+    key.shadow.camera.left = -2.2; key.shadow.camera.right = 2.2;
+    key.shadow.camera.top = 2.8; key.shadow.camera.bottom = -1.2;
     key.shadow.camera.near = 0.5; key.shadow.camera.far = 14;
-    key.shadow.bias = -0.0004;
-    key.shadow.normalBias = 0.006;
-    key.shadow.radius = 4;
+    key.shadow.bias = -0.0003;
+    key.shadow.normalBias = 0.012;
+    key.shadow.radius = 6;
+    key.shadow.blurSamples = 16;
     s.add(key);
-    const rimC = new THREE.DirectionalLight(0xfff2e6, 1.4);
-    rimC.position.set(-4, 2.6, -3);
-    s.add(rimC);
-    const rimW = new THREE.DirectionalLight(0x9fc7ff, 0.6);
-    rimW.position.set(4, 1.8, -3.5);
-    s.add(rimW);
-    const fill = new THREE.PointLight(0x9fb4ff, 6, 8, 2);
-    fill.position.set(-2, 1.2, 2.5);
+    this.keyLight = key;
+    const fill = new THREE.DirectionalLight(0xe6eef8, 0.9);
+    fill.position.set(-3.2, 1.8, 2.6);
     s.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 1.25);
+    rim.position.set(-1.5, 3.2, -4);
+    s.add(rim);
+    const rim2 = new THREE.DirectionalLight(0xf4efe9, 0.6);
+    rim2.position.set(3.5, 1.4, -3);
+    s.add(rim2);
   }
 
   _floor() {
-    // Procedural studio floor: radial fade + fine grid baked into a canvas.
+    // Quiet neutral floor: soft radial falloff, faint grid, contact shadows.
     const c = document.createElement('canvas');
     c.width = c.height = 1024;
     const g = c.getContext('2d');
-    const grd = g.createRadialGradient(512, 512, 40, 512, 512, 512);
-    grd.addColorStop(0, '#1a1f29');
-    grd.addColorStop(0.55, '#0e1218');
-    grd.addColorStop(1, '#07090d');
+    const grd = g.createRadialGradient(512, 512, 30, 512, 512, 512);
+    grd.addColorStop(0, '#38393d');
+    grd.addColorStop(0.5, '#2a2b2e');
+    grd.addColorStop(1, '#1d1e21');
     g.fillStyle = grd;
     g.fillRect(0, 0, 1024, 1024);
-    g.strokeStyle = 'rgba(120,170,220,0.07)';
+    g.strokeStyle = 'rgba(255,255,255,0.035)';
     g.lineWidth = 1;
     for (let i = 0; i <= 1024; i += 32) {
       g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 1024); g.stroke();
       g.beginPath(); g.moveTo(0, i); g.lineTo(1024, i); g.stroke();
     }
-    g.strokeStyle = 'rgba(82,212,255,0.22)';
-    g.lineWidth = 2;
-    g.beginPath(); g.arc(512, 512, 150, 0, Math.PI * 2); g.stroke();
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(8, 96),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.72, metalness: 0.08 }),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -331,20 +337,22 @@ export class Stage {
   _overlays() {
     this.overlay = new THREE.Group();
     this.scene.add(this.overlay);
-    this.lineSegs = [new Segment(0x3dff9a, 0.008), new Segment(0x3dff9a, 0.008)];
+    this.lineSegs = [new Segment(0x3dff9a, 0.004), new Segment(0x3dff9a, 0.004)];
+    this.lineSegs.forEach((sg) => (sg.mat.opacity = 0.7));
     this.lineSegs.forEach((s) => this.overlay.add(s.mesh));
     this.lineDots = [dot(0xffffff, 0.02), dot(0xffffff, 0.02), dot(0xffffff, 0.02)];
     this.lineDots.forEach((d) => this.overlay.add(d));
 
     this.angleSegs = [];
     for (let i = 0; i < 6; i++) {
-      const s = new Segment(0xffd166, 0.005);
+      const s = new Segment(0xffd166, 0.0025);
+      s.mat.opacity = 0.6;
       this.angleSegs.push(s);
       this.overlay.add(s.mesh);
     }
     this.angleDots = [];
     for (let i = 0; i < 3; i++) {
-      const d = dot(0xffd166, 0.022);
+      const d = dot(0xffd166, 0.012);
       this.angleDots.push(d);
       this.overlay.add(d);
     }
@@ -372,6 +380,77 @@ export class Stage {
   }
 
   on(fn) { this.listeners.push(fn); }
+
+  /**
+   * Replace the placeholder figure with the anatomical model. Geometry is
+   * shared; each Stage gets its own skeleton, materials and state texture.
+   */
+  useAnatomy(assets, ghostAssets = assets) {
+    const old = this.rig;
+    this.scene.remove(old.object);
+    this.rig = new AnatomyRig(assets);
+    this.scene.add(this.rig.object);
+    this.rig.bones.wristL.add(this.props.dbL);
+    this.rig.bones.wristR.add(this.props.dbR);
+    this.props.dbL.position.set(0, -0.085, 0.022);
+    this.props.dbR.position.set(0, -0.085, 0.022);
+    this.rig.meshes.muscle && Object.values(this.rig.meshes).forEach((m) => m.layers.enable(1));
+    if (this.ghosts.length) {
+      this.ghosts.forEach((g) => this.scene.remove(g.object));
+      this.ghosts = [new AnatomyRig(ghostAssets, { ghost: true }), new AnatomyRig(ghostAssets, { ghost: true })];
+      this.ghosts.forEach((g) => { g.object.visible = false; this.scene.add(g.object); });
+    }
+    if (this._layer) this.rig.setLayer(this._layer);
+    if (this.ex) this.setExercise(this.ex, { keepTime: true, transition: true });
+    this.anatomy = true;
+  }
+
+  /** GPU picking: which anatomical structure is under this canvas point? */
+  pick(clientX, clientY) {
+    if (!this.rig.isAnatomy) return null;
+    if (!this._pick) {
+      const target = new THREE.WebGLRenderTarget(1, 1);
+      const mat = new THREE.MeshBasicMaterial();
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.uState = { value: this.rig.stateTex };
+        mat.userData.sh = sh;
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float sid; uniform sampler2D uState; flat varying float vSid;')
+          .replace('#include <project_vertex>', '#include <project_vertex>\nvSid = sid; if (texelFetch(uState, ivec2(int(sid + 0.5), 0), 0).b < 0.5) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nflat varying float vSid;')
+          .replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'float id = vSid + 1.0; vec4 diffuseColor = vec4( mod(id, 256.0) / 255.0, floor(id / 256.0) / 255.0, 0.0, 1.0 );');
+      };
+      mat.toneMapped = false;
+      this._pick = { target, mat, buf: new Uint8Array(4) };
+    }
+    const { target, mat, buf } = this._pick;
+    if (mat.userData.sh) mat.userData.sh.uniforms.uState.value = this.rig.stateTex;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const x = clientX - r.left; const y = clientY - r.top;
+    const cam = this.camera;
+    cam.setViewOffset(r.width, r.height, x, y, 1, 1);
+    cam.layers.set(1);
+    const prevBg = this.scene.background; const prevOv = this.scene.overrideMaterial;
+    this.scene.background = null; this.scene.overrideMaterial = mat;
+    const prevTM = this.renderer.toneMapping; this.renderer.toneMapping = THREE.NoToneMapping;
+    const prevCS = this.renderer.outputColorSpace;
+    this.renderer.setRenderTarget(target);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.clear();
+    this.renderer.render(this.scene, cam);
+    this.renderer.readRenderTargetPixels(target, 0, 0, 1, 1, buf);
+    this.renderer.setRenderTarget(null);
+    this.renderer.toneMapping = prevTM; this.renderer.outputColorSpace = prevCS;
+    this.scene.background = prevBg; this.scene.overrideMaterial = prevOv;
+    cam.clearViewOffset(); cam.layers.set(0);
+    const id = buf[0] + buf[1] * 256 - 1;
+    return id >= 0 ? id : null;
+  }
+
+  select(sid) {
+    if (!this.rig.isAnatomy) return;
+    this.rig.select(sid);
+    this.selected = sid;
+  }
 
   // ---------------------------------------------------------------------------
   // Exercise setup
@@ -458,7 +537,7 @@ export class Stage {
   /** Sample the whole rep and frame the camera on the union bounding box. */
   _frame() {
     const box = new THREE.Box3();
-    const pts = ['headTop', 'toeL', 'toeR', 'heelL', 'heelR', 'handL', 'handR', 'kneeCapL', 'kneeCapR', 'pelvis', 'sacrum', 'elbowL', 'elbowR'];
+    const pts = this.ex.frame || ['headTop', 'toeL', 'toeR', 'heelL', 'heelR', 'handL', 'handR', 'kneeCapL', 'kneeCapR', 'pelvis', 'sacrum', 'elbowL', 'elbowR'];
     const v = new THREE.Vector3();
     const src = this.poses;
     for (let k = 0; k < 10; k++) {
@@ -469,7 +548,7 @@ export class Stage {
     this.rig._ik = [];
     this._center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    this._radius = Math.max(0.7, 0.5 * Math.hypot(size.x, size.y, size.z));
+    this._radius = Math.max(this.ex.frame ? 0.32 : 0.7, 0.5 * Math.hypot(size.x, size.y, size.z));
   }
 
   _fitDistance() {
@@ -484,6 +563,7 @@ export class Stage {
   }
 
   setLayer(mode) {
+    this._layer = mode;
     this.rig.setLayer(mode);
   }
 
@@ -696,6 +776,7 @@ export class Stage {
     const pulse = 0.85 + 0.15 * Math.sin(this.time * 6);
     this.rig.setHighlight(this.ex.primary, this.ex.secondary, ten * pulse, this.toggles.fault ? 1 : 0);
 
+    if (this.rig.updateContraction) this.rig.updateContraction();
     this._updateKB();
     this._updateOverlays(s);
     this._updateCamera(dt);
@@ -705,7 +786,26 @@ export class Stage {
 
     this.controls.update();
     this.composer.render();
+    this._adapt(dt);
     this._updateLabels(dt);
+  }
+
+  /** Adaptive resolution: trade pixel density for frame rate, never geometry. */
+  _adapt(dt) {
+    const f = this._frameTimes;
+    f.push(dt);
+    if (f.length < 90) return;
+    const avg = f.reduce((a, b) => a + b, 0) / f.length;
+    f.length = 0;
+    const max = Math.min(window.devicePixelRatio, this.opts.pixelRatio || 2);
+    if (avg > 1 / 40 && this.quality > 0.5) this.quality = Math.max(0.5, this.quality - 0.15);
+    else if (avg < 1 / 58 && this.quality < 1) this.quality = Math.min(1, this.quality + 0.1);
+    const pr = Math.max(1, max * this.quality);
+    if (Math.abs(pr - this.renderer.getPixelRatio()) > 0.05) {
+      this.renderer.setPixelRatio(pr);
+      this.composer.setPixelRatio(pr);
+      this._resize();
+    }
   }
 
   _updateKB() {
@@ -785,6 +885,12 @@ export class Stage {
       const inRange = m.good ? deg >= m.good[0] && deg <= m.good[1] : true;
       this.readouts.push({ pos: b.clone(), name: m.label, value: `${deg.toFixed(0)}°`, cls: inRange ? 'angle in' : 'angle', prio: 2 });
     });
+
+    // Selected structure label (anatomy inspection)
+    if (show && this.selected != null && this.rig.structureAnchor) {
+      const st = this.rig.meta.structures[this.selected];
+      this.readouts.push({ pos: this.rig.structureAnchor(this.selected, new THREE.Vector3()), name: st.name.replace(/[()]/g, ''), value: '', cls: 'select', prio: -1 });
+    }
 
     // Motion trace
     const traceOn = show && this.toggles.trace && ex.trace;
@@ -971,7 +1077,6 @@ export class Stage {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
-    this.bloom.setSize(w, h);
   }
 
   /** Jump to a fraction of the rep cycle (scrubbing). */
@@ -979,6 +1084,21 @@ export class Stage {
     this.time = (this.rep + frac) * this.cycle;
     this.traceHistory = [];
   }
+}
+
+function studioBackdrop() {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 512;
+  const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, 512);
+  grd.addColorStop(0, '#2b2c30');
+  grd.addColorStop(0.55, '#3a3b3f');
+  grd.addColorStop(1, '#232427');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 16, 512);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function angleAt(a, b, c) {

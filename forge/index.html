@@ -118,10 +118,21 @@
         <div class="layer-row">
           <span class="layer-label">Anatomy layer</span>
           <div class="layer-seg" id="layerSeg" role="radiogroup" aria-label="Anatomy layer">
-            <button role="radio" aria-checked="false" data-layer="skin">Skin</button>
             <button role="radio" aria-checked="true" class="on" data-layer="superficial">Superficial muscles</button>
             <button role="radio" aria-checked="false" data-layer="deep">Deep muscles</button>
+            <button role="radio" aria-checked="false" data-layer="skeleton">Skeleton</button>
           </div>
+        </div>
+        <div class="inspect" id="inspect">
+          <div class="inspect-hint" id="inspectHint">Click any muscle to identify it · drag to orbit · right-drag or two fingers to pan · scroll to zoom</div>
+          <div class="inspect-card" id="inspectCard" hidden>
+            <div><b id="inspName"></b><span id="inspLatin"></span><small id="inspMeta"></small></div>
+            <div class="inspect-actions">
+              <button class="chip" id="inspIsolate" aria-pressed="false">Isolate</button>
+              <button class="chip" id="inspClear">Clear</button>
+            </div>
+          </div>
+          <div class="anat-status" id="anatStatus" role="status"></div>
         </div>
         <div class="toggles" id="toggles">
           <button class="chip on" aria-pressed="true" data-t="angles">Joint angles</button>
@@ -258,6 +269,7 @@
 
   <footer class="footer">
     <p><strong>FORGE</strong> — the minimum effective physique.</p>
+    <p class="fine" id="anatCredit">Anatomy: <a href="https://github.com/Z-Anatomy/Models-of-human-anatomy" target="_blank" rel="noopener">Z-Anatomy</a> — The libre 3D atlas of anatomy (<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>), based on BodyParts3D © The Database Center for Life Science (CC BY 4.0); via the Svitylo 3D Anatomy Atlas data release; skinned, re-weighted and re-shaded for FORGE (changes listed in forge/assets/anatomy/ATTRIBUTION.md).</p>
     <p class="fine">Educational content, not medical advice. Check with a doctor before starting a new training or nutrition program, especially with injuries, heart conditions or a history of disordered eating. Stop any exercise that causes sharp pain.</p>
   </footer>
 
