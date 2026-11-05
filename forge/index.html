@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FORGE · Minimum Effective Physique</title>
+  <meta name="description" content="A 12-week lean-down and muscle-building plan built on 12 minimal, high-return exercises — with a real-time 3D form lab showing every joint angle, alignment line and tempo phase.">
+  <meta name="theme-color" content="#0a0d13">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <nav class="nav" id="nav">
+    <a class="brand" href="#top"><span class="brand-mark"></span>FORGE</a>
+    <div class="nav-links">
+      <a href="#method">Method</a>
+      <a href="#lab">Form Lab</a>
+      <a href="#program">Program</a>
+      <a href="#fuel">Fuel</a>
+      <a href="#notes">Field Notes</a>
+      <a href="#tracker">Tracker</a>
+    </div>
+    <button class="btn btn-sm" id="navStart">Start Session A</button>
+  </nav>
+
+  <!-- HERO ----------------------------------------------------------------->
+  <header class="hero" id="top">
+    <div class="hero-canvas" id="heroCanvas"></div>
+    <div class="hero-copy">
+      <p class="eyebrow">12 weeks · 3 sessions · 12 movements</p>
+      <h1>The minimum effective <span class="grad">physique.</span></h1>
+      <p class="lede">Lean down and build visible muscle with the fewest exercises that actually matter — distilled from calisthenics, physique coaching and film-transformation protocols, then sharpened with methods most programs never mention.</p>
+      <div class="hero-cta">
+        <a class="btn" href="#lab">Open the 3D Form Lab</a>
+        <a class="btn btn-ghost" href="#program">See the 12-week plan</a>
+      </div>
+      <dl class="hero-stats">
+        <div><dt>45</dt><dd>min / session</dd></div>
+        <div><dt>0–2</dt><dd>reps in reserve</dd></div>
+        <div><dt>~20%</dt><dd>calorie deficit</dd></div>
+        <div><dt>2 g</dt><dd>protein / kg</dd></div>
+      </dl>
+    </div>
+    <div class="hero-tag" id="heroTag">Pull-Up</div>
+  </header>
+
+  <!-- METHOD --------------------------------------------------------------->
+  <section class="section" id="method">
+    <div class="section-head">
+      <p class="eyebrow">The method</p>
+      <h2>Six rules. Everything else is noise.</h2>
+      <p class="sub">Most programs fail from complexity, not effort. FORGE strips training down to what moves the needle for fat loss <em>and</em> muscle at the same time.</p>
+    </div>
+    <div class="grid-3" id="principles"></div>
+  </section>
+
+  <!-- FORM LAB ------------------------------------------------------------->
+  <section class="section section-lab" id="lab">
+    <div class="section-head">
+      <p class="eyebrow">Form Lab · real-time 3D</p>
+      <h2>See every rep the way a coach does.</h2>
+      <p class="sub">Drag to orbit, scroll to zoom. Live joint angles, alignment lines and motion paths show what “good” looks like — then flip to <strong>Mistake mode</strong> to see the most common fault.</p>
+    </div>
+
+    <div class="lab">
+      <aside class="ex-list" id="exList" aria-label="Exercises"></aside>
+
+      <div class="viewer">
+        <div class="canvas-wrap" id="labCanvas">
+          <div class="hud hud-top">
+            <div>
+              <div class="hud-pattern" id="hudPattern"></div>
+              <div class="hud-name" id="hudName"></div>
+            </div>
+            <div class="phase-pill" id="phasePill"><span class="dot"></span><span id="phaseName">—</span></div>
+          </div>
+          <div class="hud hud-views" id="viewBtns">
+            <button data-view="front">Front</button>
+            <button data-view="side">Side</button>
+            <button data-view="threeQuarter">¾</button>
+            <button data-view="back">Back</button>
+            <button data-view="top">Top</button>
+          </div>
+          <div class="hud hud-legend" id="legend"></div>
+          <div class="fault-banner" id="faultBanner" hidden></div>
+          <div class="session-hud" id="sessionHud" hidden></div>
+          <div class="loading" id="labLoading">Building the mannequin…</div>
+        </div>
+
+        <div class="controls">
+          <button class="icon-btn" id="playBtn" aria-label="Pause">❚❚</button>
+          <div class="timeline" id="timeline">
+            <div class="tl-segs" id="tlSegs"></div>
+            <div class="tl-head" id="tlHead"></div>
+          </div>
+          <div class="rep-count"><span id="repCount">0</span><small>reps</small></div>
+          <label class="speed">
+            <span>Speed</span>
+            <select id="speed">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+            </select>
+          </label>
+        </div>
+        <div class="toggles" id="toggles">
+          <button class="chip on" data-t="angles">Joint angles</button>
+          <button class="chip on" data-t="line">Alignment line</button>
+          <button class="chip on" data-t="trace">Motion path</button>
+          <button class="chip" data-t="ghosts">Range ghosts</button>
+          <button class="chip chip-bad" data-t="fault">Mistake mode</button>
+        </div>
+      </div>
+
+      <div class="details">
+        <div class="presc" id="presc"></div>
+        <div class="tabs" role="tablist" id="tabs">
+          <button class="tab on" data-tab="cues">Form cues</button>
+          <button class="tab" data-tab="mistakes">Mistakes</button>
+          <button class="tab" data-tab="breathing">Breath</button>
+          <button class="tab" data-tab="progressions">Progressions</button>
+        </div>
+        <div class="tab-body" id="tabBody"></div>
+        <div class="insight" id="insight"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROGRAM -------------------------------------------------------------->
+  <section class="section" id="program">
+    <div class="section-head">
+      <p class="eyebrow">The program</p>
+      <h2>12 weeks. Three phases.</h2>
+      <p class="sub">Alternate weeks (ABA then BAB). Click any exercise to see it in the Form Lab, or start a guided session with a built-in rest timer.</p>
+    </div>
+    <div class="phase-tabs" id="phaseTabs"></div>
+    <div class="phase-card" id="phaseCard"></div>
+    <div class="week" id="week"></div>
+    <div class="sessions" id="sessions"></div>
+    <div class="rules">
+      <h3>How to progress</h3>
+      <div class="grid-2" id="rules"></div>
+    </div>
+  </section>
+
+  <!-- FUEL ----------------------------------------------------------------->
+  <section class="section" id="fuel">
+    <div class="section-head">
+      <p class="eyebrow">Fuel</p>
+      <h2>Lose fat. Keep every gram of muscle.</h2>
+      <p class="sub">Your numbers, calculated with the Mifflin-St Jeor equation, then set for a muscle-sparing deficit. Adjust every two weeks based on the scale trend, not single weigh-ins.</p>
+    </div>
+    <div class="fuel">
+      <form class="card calc" id="calc" autocomplete="off">
+        <div class="seg" role="radiogroup" aria-label="Sex">
+          <label><input type="radio" name="sex" value="m" checked><span>Male</span></label>
+          <label><input type="radio" name="sex" value="f"><span>Female</span></label>
+        </div>
+        <div class="unit-row">
+          <div class="seg seg-sm" role="radiogroup" aria-label="Units">
+            <label><input type="radio" name="unit" value="metric" checked><span>kg / cm</span></label>
+            <label><input type="radio" name="unit" value="imperial"><span>lb / in</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <label>Age<input type="number" name="age" value="30" min="16" max="80"></label>
+          <label><span id="wLabel">Weight (kg)</span><input type="number" name="weight" value="82" min="35" max="300" step="0.1"></label>
+          <label><span id="hLabel">Height (cm)</span><input type="number" name="height" value="178" min="120" max="230"></label>
+        </div>
+        <label class="full">Daily activity (outside training)
+          <select name="activity">
+            <option value="1.35">Desk job, few steps</option>
+            <option value="1.5" selected>Desk job + 8–10k steps</option>
+            <option value="1.65">On your feet most of the day</option>
+            <option value="1.8">Physical job</option>
+          </select>
+        </label>
+        <label class="full">Goal
+          <select name="goal">
+            <option value="0.15">Lean down — steady (−15%)</option>
+            <option value="0.2" selected>Lean down — FORGE default (−20%)</option>
+            <option value="0.25">Shred — aggressive (−25%)</option>
+            <option value="0.08">Recomp — slow & muscle-first (−8%)</option>
+          </select>
+        </label>
+      </form>
+      <div class="card results" id="results"></div>
+    </div>
+
+    <div class="card ratio">
+      <div>
+        <h3>The V-taper ratio</h3>
+        <p class="sub">Shoulder circumference ÷ waist (at the navel). The “golden” physique sits near <strong>1.6</strong>. Track this instead of obsessing over weight.</p>
+      </div>
+      <div class="ratio-tool">
+        <label>Shoulders <input type="number" id="shoulders" value="118" step="0.5"></label>
+        <label>Waist <input type="number" id="waist" value="86" step="0.5"></label>
+        <div class="ratio-out" id="ratioOut"></div>
+      </div>
+      <div class="ratio-bar"><div class="ratio-fill" id="ratioFill"></div><span class="ratio-mark" style="left:75%">1.6</span></div>
+    </div>
+  </section>
+
+  <!-- FIELD NOTES ---------------------------------------------------------->
+  <section class="section" id="notes">
+    <div class="section-head">
+      <p class="eyebrow">Field notes</p>
+      <h2>Details most programs never tell you.</h2>
+      <p class="sub">Every note is tagged honestly: <span class="tag tag-research">Research</span> has peer-reviewed support, <span class="tag tag-craft">Coach craft</span> comes from long coaching tradition, and <span class="tag tag-forge">FORGE method</span> is original to this plan.</p>
+    </div>
+    <div class="filters" id="noteFilters">
+      <button class="chip on" data-f="all">All</button>
+      <button class="chip" data-f="research">Research</button>
+      <button class="chip" data-f="craft">Coach craft</button>
+      <button class="chip" data-f="forge">FORGE method</button>
+    </div>
+    <div class="grid-3" id="notesGrid"></div>
+  </section>
+
+  <!-- TRACKER -------------------------------------------------------------->
+  <section class="section" id="tracker">
+    <div class="section-head">
+      <p class="eyebrow">Tracker</p>
+      <h2>36 sessions. Tick them off.</h2>
+      <p class="sub">Saved in this browser only. Consistency beats intensity — the plan works if you show up for 30 of these 36.</p>
+    </div>
+    <div class="card tracker">
+      <div class="tracker-top">
+        <div class="ring" id="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="ring-bg"/><circle cx="60" cy="60" r="52" class="ring-fg" id="ringFg"/></svg><div class="ring-txt"><strong id="ringPct">0%</strong><small id="ringCount">0 / 36</small></div></div>
+        <div class="tracker-legend">
+          <p><strong>Phase 1</strong> Foundation · <strong>Phase 2</strong> Build · <strong>Phase 3</strong> Shred</p>
+          <button class="btn btn-ghost btn-sm" id="resetTracker">Reset</button>
+        </div>
+      </div>
+      <div class="tracker-grid" id="trackerGrid"></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p><strong>FORGE</strong> — the minimum effective physique.</p>
+    <p class="fine">Educational content, not medical advice. Check with a doctor before starting a new training or nutrition program, especially with injuries, heart conditions or a history of disordered eating. Stop any exercise that causes sharp pain.</p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

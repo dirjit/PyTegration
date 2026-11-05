@@ -124,3 +124,11 @@ docs/            # the long-form lessons linked above
 ## License
 
 MIT — use it, fork it, teach with it.
+
+---
+
+## Bonus: FORGE workout site
+
+[`forge/`](forge/) is a standalone static website — a 12-week minimal-equipment
+fat-loss and muscle plan with a real-time three.js form lab. See
+[`forge/README.md`](forge/README.md) to run it.
