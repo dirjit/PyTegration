@@ -405,6 +405,7 @@ export class Rig {
       this._part(new THREE.CapsuleGeometry(0.0095, 0.04, 4, 10), D, wr,
         [0.022 * k, -0.05, 0.026], [1, 1, 1], [-40, 0, -25 * k]);
       this._marker('hand' + s, wr, [0, -0.07, 0.0]);
+      this._marker('grip' + s, wr, [0, -0.07, 0.0]); // procedural hand: grip centre = hand point
       this._marker('palm' + s, wr, [0, -0.07, 0.025]);
 
       // --- Leg ---------------------------------------------------------------

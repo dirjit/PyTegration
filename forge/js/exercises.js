@@ -12,6 +12,7 @@
 
 const FEET = 'mid:heelL,heelR,toeL,toeR';
 const HANDS = 'mid:handL,handR';
+const GRIPS = 'mid:gripL,gripR'; // bar axis inside the closed hand
 
 export const EXERCISES = [
   // ---------------------------------------------------------------------------
@@ -61,17 +62,18 @@ export const EXERCISES = [
   {
     id: 'pushup',
     pron: 175,
-    grip: 0.0,
+    grip: -0.75,
+    handLock: { dir: [0.17, -0.1, 1], palm: [0, -1, 0] },
     name: 'Push-Up',
     pattern: 'Horizontal push',
     primary: ['chest', 'triceps'],
     secondary: ['delts', 'abs'],
     props: ['mat'],
     view: 'side',
-    anchor: { point: 'mid:toeL,toeR', target: [0, 0.02, -0.75], second: { point: HANDS, y: 0.03 } },
+    anchor: { point: 'mid:toeL,toeR', target: [0, 0.02, -0.75], second: { point: HANDS, y: 0.025 } },
     ik: { joints: ['shoulder', 'shoulder'], axes: [0, 1], point: 'handL', dims: ['z', 'x'] },
     poses: [
-      { root: [78], neck: [6], shoulder: [-63, 0, 18], elbow: [-3], wrist: [102], ankle: [6] },
+      { root: [78], neck: [6], shoulder: [-68, 0, 8], elbow: [-3], wrist: [102], ankle: [6] },
       { root: [89], neck: [8], spine: [-2], shoulder: [10, 0, 38], elbow: [-96], wrist: [93], ankle: [8] },
     ],
     tempo: [
@@ -114,20 +116,21 @@ export const EXERCISES = [
   {
     id: 'pullup',
     pron: 170,
-    grip: 0.92,
+    grip: { bar: 0.017, thumb: 1.2 },
+    handLock: { across: [-1, 0, 0] },
     name: 'Pull-Up',
     pattern: 'Vertical pull',
     primary: ['lats', 'upperback'],
     secondary: ['biceps', 'forearms', 'abs'],
     props: ['bar'],
     view: 'threeQuarter',
-    anchor: { point: HANDS, target: [0, 2.3, 0] },
+    anchor: { point: GRIPS, target: [0, 2.3, 0] },
     balance: true,
-    ik: { joints: 'shoulder', axes: [1], point: 'handL', dims: ['x'] },
+    ik: { joints: 'shoulder', axes: [1], point: 'gripL', dims: ['x'] },
     poses: [
       { shoulder: [-174, 0, 22], elbow: [-2], hip: [-10], knee: [22], ankle: [25] },
       { chest: [-6], spine: [-4], shoulder: [-166, 0, 20], elbow: [-4], hip: [-14], knee: [22], ankle: [25] },
-      { chest: [-14], spine: [-6], neck: [-6], shoulder: [-22, 0, 52], elbow: [-138], hip: [-18], knee: [25], ankle: [25] },
+      { chest: [-14], spine: [-6], neck: [-6], shoulder: [-18, 30, 62], elbow: [-125], hip: [-18], knee: [25], ankle: [25] },
     ],
     tempo: [
       { label: 'Dead hang', dur: 0.8, from: 0, to: 0, tension: 0.3 },
@@ -167,18 +170,19 @@ export const EXERCISES = [
   {
     id: 'pike',
     pron: 175,
-    grip: 0.0,
+    grip: -0.75,
+    handLock: { dir: [0.17, -0.1, 1], palm: [0, -1, 0] },
     name: 'Pike Push-Up',
     pattern: 'Vertical push',
     primary: ['delts', 'triceps'],
     secondary: ['traps', 'chest', 'abs'],
     props: ['mat'],
     view: 'side',
-    anchor: { point: 'mid:toeL,toeR', target: [0, 0.017, -0.6], second: { point: HANDS, y: 0.03 } },
-    ik: { joints: 'shoulder', point: HANDS },
+    anchor: { point: 'mid:toeL,toeR', target: [0, 0.017, -0.6], second: { point: HANDS, y: 0.025 } },
+    ik: { joints: ['shoulder', 'shoulder'], axes: [0, 1], point: 'handL', dims: ['z', 'x'] },
     poses: [
-      { root: [132], neck: [-6], shoulder: [-132, 0, 18], elbow: [-3], wrist: [87], hip: [-96], ankle: [18] },
-      { root: [146], neck: [-14], shoulder: [-100, 0, 30], elbow: [-88], wrist: [48], hip: [-106], ankle: [20] },
+      { root: [132], neck: [-6], shoulder: [-132, 0, 10], elbow: [-3], wrist: [87], hip: [-96], ankle: [18] },
+      { root: [146], neck: [-14], shoulder: [-100, 0, 24], elbow: [-88], wrist: [48], hip: [-106], ankle: [20] },
     ],
     tempo: [
       { label: 'Lower', dur: 2.6, from: 0, to: 1, tension: 0.9 },
@@ -194,7 +198,7 @@ export const EXERCISES = [
     trace: { pt: 'headTop', label: 'Head travels forward: "tripod"' },
     fault: {
       label: 'Hips too low (turns into a push-up) + elbows flared',
-      delta: [{ root: [-35], hip: [35], shoulder: [0, 0, 25] }, { root: [-38], hip: [38], shoulder: [0, 0, 40] }],
+      delta: [{ root: [-35], hip: [35], shoulder: [35, 0, 25] }, { root: [-38], hip: [38], shoulder: [38, 0, 40] }],
     },
     prescription: '4 × 5–10',
     rest: '2 min',
@@ -217,15 +221,16 @@ export const EXERCISES = [
   {
     id: 'dip',
     pron: 90,
-    grip: 0.7,
+    grip: { bar: 0.02, thumb: 1.2 },
+    handLock: { dir: [0.39, -0.92, 0], palm: [-0.92, -0.39, 0] },
     name: 'Parallel Bar Dip',
     pattern: 'Vertical push',
     primary: ['chest', 'triceps'],
     secondary: ['delts', 'abs'],
     props: ['dip'],
     view: 'threeQuarter',
-    anchor: { point: HANDS, target: [0, 1.32, 0] },
-    ik: { joints: 'shoulder', axes: [2], point: 'handL', dims: ['x'] },
+    anchor: { point: GRIPS, target: [0, 1.32, 0] },
+    ik: { joints: 'shoulder', axes: [2], point: 'gripL', dims: ['x'] },
     poses: [
       { root: [8], shoulder: [-7, 0, 10], elbow: [-2], wrist: [-4], hip: [-24], knee: [88], ankle: [28] },
       { root: [24], neck: [4], shoulder: [70, 0, 18], elbow: [-98], wrist: [0], hip: [-34], knee: [92], ankle: [28] },
@@ -267,18 +272,19 @@ export const EXERCISES = [
   {
     id: 'row',
     pron: 170,
-    grip: 0.92,
+    grip: { bar: 0.017, thumb: 1.2 },
+    handLock: { across: [-1, 0, 0] },
     name: 'Inverted Row',
     pattern: 'Horizontal pull',
     primary: ['upperback', 'lats'],
     secondary: ['biceps', 'delts', 'glutes'],
     props: ['bar'],
     view: 'threeQuarter',
-    anchor: { point: HANDS, target: [0, 1.1, 0], second: { point: 'mid:heelL,heelR', y: 0.006 } },
-    ik: { joints: 'shoulder', point: 'mid:heelL,heelR' },
+    anchor: { point: GRIPS, target: [0, 1.1, 0], second: { point: 'mid:heelL,heelR', y: 0.006 } },
+    ik: [{ joints: 'shoulder', axes: [2], point: 'gripL', dims: ['x'] }, { joints: 'shoulder', point: 'mid:heelL,heelR' }],
     poses: [
       { root: [-62], shoulder: [-100, 0, 16], elbow: [-2], ankle: [-6] },
-      { root: [-70], chest: [-10], shoulder: [20, 0, 28], elbow: [-135], ankle: [-6] },
+      { root: [-70], chest: [-10], shoulder: [20, 30, 28], elbow: [-135], ankle: [-6] },
     ],
     tempo: [
       { label: 'Pull', dur: 1, from: 0, to: 1, ease: 'drive', tension: 1 },
@@ -471,14 +477,15 @@ export const EXERCISES = [
   {
     id: 'legraise',
     pron: 170,
-    grip: 0.92,
+    grip: { bar: 0.017, thumb: 1.2 },
+    handLock: { across: [-1, 0, 0] },
     name: 'Hanging Leg Raise',
     pattern: 'Core flexion',
     primary: ['abs'],
     secondary: ['obliques', 'forearms', 'lats'],
     props: ['bar'],
     view: 'threeQuarter',
-    anchor: { point: HANDS, target: [0, 2.3, 0] },
+    anchor: { point: GRIPS, target: [0, 2.3, 0] },
     balance: true,
     poses: [
       { shoulder: [-174, 0, 22], elbow: [-2], hip: [-4], knee: [4], ankle: [28] },

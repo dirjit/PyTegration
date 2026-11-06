@@ -37,6 +37,10 @@ const MESHES = ['muscle', 'fascia', 'bone', 'eye', 'digits'];
 // Thumb: CMC opposition, MCP, IP. Real ranges, scaled by the grip amount.
 const FINGER_MAX = { 1: [38, 45, 50], 2: [78, 96, 58], 3: [82, 100, 60], 4: [84, 100, 58], 5: [86, 98, 56] };
 const RELAXED_GRIP = 0.18;
+// palm contact point -> bar axis (bar radius 0.017 + palm soft tissue)
+const GRIP_OFFSET = [0, -0.012, 0.021];
+const THUMB_FLAT = 30; // grip < 0: thumb also extends/abducts out of the palm to lie on the floor
+const FINGER_PAD = 0.009; // half thickness of a finger (joint centre -> palmar skin)
 // Forearm rotation from the atlas' palms-forward (fully supinated) pose:
 // 0 = palms forward, 90 = neutral (palms facing the thighs), 160-180 = pronated.
 const NEUTRAL_PRONATION = 90;
@@ -355,6 +359,9 @@ export class AnatomyRig {
     const alias = (name, seg, p) => { const o = new THREE.Object3D(); o.position.set(p[0] - J[seg][0], p[1] - J[seg][1], p[2] - J[seg][2]); this.bones[seg].add(o); this.markers[name] = o; };
     for (const sd of ['L', 'R']) {
       alias('ankleBone' + sd, 'ankle' + sd, J['ankle' + sd]);
+      // centre of a gripped bar: in front of the palm contact point (palm faces +Z in the atlas)
+      const h = meta.markers['hand' + sd].p;
+      alias('grip' + sd, 'wrist' + sd, [h[0] + GRIP_OFFSET[0], h[1] + GRIP_OFFSET[1], h[2] + GRIP_OFFSET[2]]);
     }
 
     // ---------------------------------------------------------------- state
@@ -364,7 +371,15 @@ export class AnatomyRig {
     this.grip = RELAXED_GRIP;
     this.pronation = NEUTRAL_PRONATION;
     this.fingerQ = {};
-    for (const [seg, f] of Object.entries(meta.fingers || {})) this.fingerQ[seg] = { axis: new THREE.Vector3(...f.axis), digit: +seg[1], joint: +seg[3] };
+    for (const [seg, f] of Object.entries(meta.fingers || {})) {
+      // atlas rest flexion about the joint axis (the atlas hand is relaxed, not flat)
+      const ax = new THREE.Vector3(...f.axis); const pa = meta.parent[seg];
+      const pd = meta.fingers[pa] ? new THREE.Vector3(...meta.fingers[pa].dir) : new THREE.Vector3(...J[seg]).sub(new THREE.Vector3(...J[pa])).normalize();
+      const d = new THREE.Vector3(...f.dir);
+      pd.addScaledVector(ax, -pd.dot(ax)); d.addScaledVector(ax, -d.dot(ax));
+      const rest = Math.atan2(ax.dot(new THREE.Vector3().crossVectors(pd, d)), pd.dot(d)) / DEG;
+      this.fingerQ[seg] = { axis: ax, digit: +seg[1], joint: +seg[3], rest };
+    }
     this.stateTex = new THREE.DataTexture(this.state, STATE_W, 1, THREE.RGBAFormat, THREE.FloatType);
     this.stateTex.needsUpdate = true;
 
@@ -448,7 +463,8 @@ export class AnatomyRig {
     }
     // fingers: curl toward the palm about each finger's own flexion axis
     for (const [seg, f] of Object.entries(this.fingerQ)) {
-      const deg = FINGER_MAX[f.digit][f.joint - 1] * this.grip;
+      // grip > 0 curls toward a fist; grip < 0 straightens the atlas' relaxed curl (-1 = flat)
+      const deg = this.wrapDeg?.[seg] ?? (this.grip >= 0 ? FINGER_MAX[f.digit][f.joint - 1] * this.grip : (f.rest + (f.digit === 1 ? THUMB_FLAT : 0)) * this.grip);
       R[seg] = new THREE.Quaternion().setFromAxisAngle(f.axis, deg * DEG);
     }
     const W = {}; const G = {};
@@ -466,7 +482,49 @@ export class AnatomyRig {
   setPronation(deg) { this.pronation = deg; }
 
   /** 0 = fingers straight (palm flat), 1 = full grip around a bar. */
-  setGrip(v) { this.grip = THREE.MathUtils.clamp(v, 0, 1); }
+  setGrip(v) {
+    this.wrapDeg = null;
+    if (v && typeof v === 'object') { this.grip = v.thumb ?? 0.6; this.wrapDeg = this._wrap(v.bar); return; }
+    this.grip = THREE.MathUtils.clamp(v, -1, 1);
+  }
+
+  /**
+   * Finger angles that wrap digits 2-5 around a bar of radius R whose axis runs
+   * through the grip marker along the knuckle line (solved once in the atlas frame).
+   */
+  _wrap(R) {
+    const J = this.meta.joints; const out = {};
+    const v3 = (a) => new THREE.Vector3(...a);
+    for (const sd of ['L', 'R']) {
+      const c = this.markers['grip' + sd].position.clone().add(v3(J['wrist' + sd]));
+      const a = v3(J['f2' + sd + '1']).sub(v3(J['f5' + sd + '1'])).normalize();
+      const dist = (p) => { const d = p.clone().sub(c); return d.addScaledVector(a, -d.dot(a)).length(); };
+      for (const dg of [2, 3, 4, 5]) {
+        const segs = [1, 2, 3].map((j) => 'f' + dg + sd + j);
+        const pts = segs.map((k) => v3(J[k]));
+        const last = this.meta.fingers[segs[2]];
+        pts.push(pts[2].clone().addScaledVector(v3(last.dir), 0.8 * pts[2].distanceTo(pts[1])));
+        let Q = new THREE.Quaternion();
+        for (let j = 0; j < 3; j++) {
+          const f = this.fingerQ[segs[j]];
+          const ax = f.axis.clone().applyQuaternion(Q);
+          const rot = (deg) => { const q = new THREE.Quaternion().setFromAxisAngle(ax, (deg - f.rest) * DEG); return pts.slice(j + 1).map((p) => p.clone().sub(pts[j]).applyQuaternion(q).add(pts[j])); };
+          // flex (from flat) until the next joint / fingertip touches the bar surface
+          let best = 0, bestErr = Infinity;
+          for (let deg = 0; deg <= 110; deg += 1) {
+            const e = dist(rot(deg)[0]) - (R + FINGER_PAD);
+            if (Math.abs(e) < bestErr) { bestErr = Math.abs(e); best = deg; }
+            if (e <= 0) break;
+          }
+          const moved = rot(best);
+          for (let k = j + 1; k < pts.length; k++) pts[k] = moved[k - j - 1];
+          Q = new THREE.Quaternion().setFromAxisAngle(ax, (best - f.rest) * DEG).multiply(Q);
+          out[segs[j]] = best - f.rest; // applyPose angles are relative to the atlas rest curl
+        }
+      }
+    }
+    return out;
+  }
 
   /** Measure every muscle's current length and set its contraction. */
   updateContraction() {

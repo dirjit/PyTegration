@@ -502,14 +502,15 @@ export class Stage {
       });
     }
     if (ex.props?.includes('bar')) {
-      const h = r.world('mid:handL,handR');
+      const h = r.world(ex.anchor.point);
       P.bar.position.copy(h);
       P.bar.userData.update(h.y);
     }
     if (ex.props?.includes('dip')) {
-      const a = r.world('handL'); const b = r.world('handR');
-      P.dip.position.set((a.x + b.x) / 2, a.y - 0.02, a.z);
-      P.dip.userData.update(a.y - 0.02, Math.abs(a.x - b.x) / 2);
+      const k = ex.anchor.point.includes('grip') ? 'grip' : 'hand'; const dy = k === 'grip' ? 0 : 0.02;
+      const a = r.world(k + 'L'); const b = r.world(k + 'R');
+      P.dip.position.set((a.x + b.x) / 2, a.y - dy, a.z);
+      P.dip.userData.update(a.y - dy, Math.abs(a.x - b.x) / 2);
     }
     if (ex.props?.includes('bench')) {
       const i = r.world(ex.benchFoot || 'instepR');
@@ -677,7 +678,9 @@ export class Stage {
     const A = this.ex.anchor;
     const flat = this.ex.flatFeet;
 
-    for (let iter = 0; iter < (flat ? 2 : 1); iter++) {
+    const lockH = this.ex.handLock && rig.isAnatomy;
+    if (lockH) rig._twist = { L: 0, R: 0 };
+    for (let iter = 0; iter < (flat || lockH ? 2 : 1) + (lockH ? 1 : 0); iter++) {
       // Primary contact: translate so the declared point(s) land on target.
       const p = rig.world(A.point, tmpV2);
       const t = A.target;
@@ -746,6 +749,63 @@ export class Stage {
           an.updateMatrixWorld(true);
         }
       }
+      if (lockH) this._lockHands(rig, this.ex.handLock);
+    }
+  }
+
+  /**
+   * Hand contact: orient each hand in world space (palm flat on the floor,
+   * or knuckle line along the bar) and hand the extra forearm rotation this
+   * needs to the twist bones, so the forearm turns instead of the wrist.
+   *   { dir, palm }  full lock: finger direction + palm normal (left hand)
+   *   { across }     partial: index-side knuckle direction only (bar grips)
+   */
+  _lockHands(rig, L) {
+    const J = rig.meta.joints;
+    if (!rig._hf) {
+      rig._hf = {};
+      for (const s of ['L', 'R']) {
+        const v = (k) => new THREE.Vector3(...J[k === 'wrist' ? k + s : k + s + '1']);
+        const d = v('f2').add(v('f5')).multiplyScalar(0.5);
+        const w = v('wrist');
+        const dd = d.sub(w).normalize();
+        const a = v('f2').sub(v('f5'));
+        a.addScaledVector(dd, -a.dot(dd)).normalize();
+        const n = s === 'L' ? new THREE.Vector3().crossVectors(dd, a) : new THREE.Vector3().crossVectors(a, dd);
+        rig._hf[s] = new THREE.Matrix4().makeBasis(dd, a, n);
+      }
+    }
+    const qW = new THREE.Quaternion(); const qP = new THREE.Quaternion(); const qT = new THREE.Quaternion();
+    const ax = new THREE.Vector3(); const e = new THREE.Vector3(); const w = new THREE.Vector3();
+    for (const s of ['L', 'R']) {
+      const m = (v) => new THREE.Vector3(s === 'L' ? v[0] : -v[0], v[1], v[2]).normalize();
+      const wb = rig.bones['wrist' + s];
+      wb.getWorldQuaternion(qW);
+      if (L.dir) {
+        const d = m(L.dir); const n = m(L.palm);
+        n.addScaledVector(d, -n.dot(d)).normalize();
+        const a = s === 'L' ? new THREE.Vector3().crossVectors(n, d) : new THREE.Vector3().crossVectors(d, n);
+        const Mt = new THREE.Matrix4().makeBasis(d, a, n);
+        qT.setFromRotationMatrix(Mt.multiply(rig._hf[s].clone().transpose()));
+      } else {
+        const a0 = new THREE.Vector3().setFromMatrixColumn(rig._hf[s], 1).applyQuaternion(qW);
+        qT.setFromUnitVectors(a0, m(L.across)).multiply(qW);
+      }
+      // twist part of the correction about the forearm axis -> twist bones
+      rig.bones['elbow' + s].getWorldPosition(e); wb.getWorldPosition(w);
+      ax.subVectors(w, e).normalize();
+      const D = qT.clone().multiply(qW.clone().invert());
+      if (D.w < 0) D.set(-D.x, -D.y, -D.z, -D.w);
+      const tw = 2 * Math.atan2(D.x * ax.x + D.y * ax.y + D.z * ax.z, D.w);
+      const par = rig.bones['elbow' + s]; par.getWorldQuaternion(qP); const qPi = qP.clone().invert();
+      for (const [k, f] of [['tw1', 0.25], ['tw2', 0.5], ['tw3', 0.75]]) {
+        const b = rig.bones[k + s]; if (!b) continue;
+        b.getWorldQuaternion(qW);
+        b.quaternion.copy(qPi).multiply(new THREE.Quaternion().setFromAxisAngle(ax, tw * f)).multiply(qW);
+      }
+      wb.quaternion.copy(qPi).multiply(qT);
+      par.updateMatrixWorld(true);
+      rig._twist[s] += tw / DEG;
     }
   }
 
