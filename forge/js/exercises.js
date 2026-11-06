@@ -321,7 +321,7 @@ export const EXERCISES = [
   {
     id: 'bss',
     pron: 90,
-    grip: 0.88,
+    grip: { bar: 0.016, thumb: 1.2 }, // wrapped around the 28 mm handle
     name: 'Bulgarian Split Squat',
     pattern: 'Single-leg squat',
     primary: ['quads', 'glutes'],
@@ -377,7 +377,7 @@ export const EXERCISES = [
   {
     id: 'rdl',
     pron: 90,
-    grip: 0.88,
+    grip: { bar: 0.016, thumb: 1.2 }, // wrapped around the 28 mm handle
     name: 'Romanian Deadlift',
     pattern: 'Hip hinge',
     primary: ['hams', 'glutes'],
@@ -430,7 +430,7 @@ export const EXERCISES = [
   {
     id: 'lateral',
     pron: 90,
-    grip: 0.88,
+    grip: { bar: 0.016, thumb: 1.2 }, // wrapped around the 28 mm handle
     name: 'Lateral Raise',
     pattern: 'Shoulder isolation',
     primary: ['delts'],
@@ -626,7 +626,8 @@ export const EXERCISES = [
   {
     id: 'swing',
     pron: 170,
-    grip: 0.9,
+    grip: { bar: 0.013, thumb: 1.2 },
+    handLock: { across: [-1, 0, 0] },
     name: 'Kettlebell Swing',
     pattern: 'Ballistic hinge · conditioning',
     primary: ['glutes', 'hams'],
@@ -636,8 +637,8 @@ export const EXERCISES = [
     anchor: { point: FEET, target: [0, 0, 0] },
     flatFeet: true,
     poses: [
-      { root: [64], neck: [-16], hip: [-84, 0, 12], knee: [24], shoulder: [-30, 0, -9], elbow: [-2] },
-      { root: [-4], hip: [0, 0, 12], knee: [2], shoulder: [-92, 0, -9], elbow: [-2] },
+      { root: [64], neck: [-16], hip: [-84, 0, 20], knee: [24], shoulder: [-30, 15, -17], elbow: [-2] },
+      { root: [-4], hip: [0, 0, 20], knee: [2], shoulder: [-92, 15, -17], elbow: [-2] },
     ],
     tempo: [
       { label: 'Hip snap', dur: 0.48, from: 0, to: 1, ease: 'drive', tension: 1 },

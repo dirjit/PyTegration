@@ -132,9 +132,15 @@ function buildProps() {
   // Kettlebell
   const kb = new THREE.Group();
   const bell = new THREE.Mesh(new THREE.SphereGeometry(0.1, 32, 24), rubberMat(0x15171c));
-  bell.position.y = -0.14; bell.scale.y = 0.95; bell.castShadow = true;
-  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.012, 12, 32, Math.PI), steel);
-  handle.rotation.z = Math.PI; handle.position.y = -0.03; handle.castShadow = true;
+  bell.position.y = -0.15; bell.scale.y = 0.95; bell.castShadow = true;
+  // handle: a straight bar (local x, through both grips) on two horns
+  const handle = new THREE.Group();
+  handle.add(cyl(0.011, 0.13, steel, 'x'));
+  for (const k of [-1, 1]) {
+    const horn = cyl(0.011, 0.085, steel);
+    horn.position.set(k * 0.07, -0.04, 0); horn.rotation.z = k * 0.18;
+    handle.add(horn);
+  }
   kb.add(bell, handle);
   props.kb = kb;
 
@@ -394,8 +400,11 @@ export class Stage {
     this.rig.bones.wristR.add(this.props.dbR);
     for (const s of ['L', 'R']) {
       const db = this.props['db' + s];
-      db.position.copy(this.rig.markers['hand' + s].position);
-      db.rotation.set(0, Math.PI / 2, 0);
+      // handle through the grip point, along the knuckle line (atlas = wrist-local frame)
+      const J = this.rig.meta.joints;
+      const ax = new THREE.Vector3(...J['f2' + s + '1']).sub(new THREE.Vector3(...J['f5' + s + '1'])).normalize();
+      db.position.copy(this.rig.markers['grip' + s].position);
+      db.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), ax);
     }
     this.rig.meshes.muscle && Object.values(this.rig.meshes).forEach((m) => m.layers.enable(1));
     if (this.ghosts.length) {
@@ -880,11 +889,16 @@ export class Stage {
   _updateKB() {
     const kb = this.props.kb;
     if (!kb.visible) return;
-    const h = this.rig.world('mid:handL,handR', new THREE.Vector3());
+    // handle bar runs through both grip points; the bell hangs away from the shoulders
+    const a = this.rig.world('gripL', new THREE.Vector3());
+    const b = this.rig.world('gripR', new THREE.Vector3());
     const sh = this.rig.world('mid:shoulderL,shoulderR', new THREE.Vector3());
-    const dir = h.clone().sub(sh).normalize();
+    const h = a.clone().add(b).multiplyScalar(0.5);
+    const x = a.clone().sub(b).normalize();
+    const y = sh.sub(h); y.addScaledVector(x, -y.dot(x)).normalize();
+    const z = new THREE.Vector3().crossVectors(x, y);
+    kb.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
     kb.position.copy(h);
-    kb.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
   }
 
   _updateCamera(dt) {
