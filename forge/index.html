@@ -70,7 +70,7 @@
     <div class="section-head">
       <p class="eyebrow">Form Lab · real-time 3D</p>
       <h2>See every rep the way a coach does.</h2>
-      <p class="sub">Drag to orbit, scroll to zoom. Live joint angles, alignment lines and motion paths show what “good” looks like — then flip to <strong>Mistake mode</strong> to see the most common fault.</p>
+      <p class="sub">The muscles doing the work light up through the skin, brightest in the hardest part of the rep — switch to <strong>X-ray</strong> to see them inside the body. Live joint angles, alignment lines and motion paths show what “good” looks like; <strong>Mistake mode</strong> shows the most common fault.</p>
     </div>
 
     <div class="lab">
@@ -95,7 +95,7 @@
           </div>
           <div class="hud hud-legend" id="legend"></div>
           <div class="session-hud" id="sessionHud" hidden></div>
-          <div class="loading" id="labLoading">Building the mannequin…</div>
+          <div class="loading" id="labLoading">Building the figure…</div>
         </div>
 
         <div class="controls">
@@ -116,15 +116,17 @@
           </label>
         </div>
         <div class="layer-row">
-          <span class="layer-label">Anatomy layer</span>
-          <div class="layer-seg" id="layerSeg" role="radiogroup" aria-label="Anatomy layer">
-            <button role="radio" aria-checked="true" class="on" data-layer="superficial">Superficial muscles</button>
+          <span class="layer-label">View</span>
+          <div class="layer-seg" id="layerSeg" role="radiogroup" aria-label="Body view">
+            <button role="radio" aria-checked="true" class="on" data-layer="athlete">Athlete</button>
+            <button role="radio" aria-checked="false" data-layer="xray">X-ray</button>
+            <button role="radio" aria-checked="false" data-layer="superficial">Muscles</button>
             <button role="radio" aria-checked="false" data-layer="deep">Deep muscles</button>
             <button role="radio" aria-checked="false" data-layer="skeleton">Skeleton</button>
           </div>
         </div>
         <div class="inspect" id="inspect">
-          <div class="inspect-hint" id="inspectHint">Click any muscle to identify it · drag to orbit · right-drag or two fingers to pan · scroll to zoom</div>
+          <div class="inspect-hint" id="inspectHint">Working muscles glow as they load · click one to name it · drag to orbit · right-drag or two fingers to pan · scroll to zoom</div>
           <div class="inspect-card" id="inspectCard" hidden>
             <div><b id="inspName"></b><span id="inspLatin"></span><small id="inspMeta"></small></div>
             <div class="inspect-actions">
