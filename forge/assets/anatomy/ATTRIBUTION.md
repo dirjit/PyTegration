@@ -52,19 +52,22 @@ musculoskeletal and eye structures were used here.
      trains are displaced outward along their normals by 2-20 mm (most on
      chest, deltoids, arms, lats and quadriceps; none on tendons).
    - *Skin rebuilt as one surface.* Each atlas skin region is a closed slab
-     (skin plus the fat beneath it). On the body only the outer sheet is kept;
-     the sheets are stitched along their shared borders, small gaps are filled,
-     and the surface is subdivided once. Head, hands and feet keep the atlas
-     slabs unchanged.
+     (skin plus the fat beneath it). On the body and head only the outer sheet
+     is kept; the sheets are stitched along their shared borders, small gaps
+     are filled, and the body surface is subdivided once. Hands, feet and ears
+     keep the atlas slabs unchanged; the head keeps the atlas' shape.
    - *Skin drawn tight.* Body skin is moved to a 2.8 mm layer above the nearest
      (thickened) muscle, fascia or bone and lightly smoothed, i.e. the
      subcutaneous fat is removed. This is a deliberate departure from the
      atlas' body shape.
    - *Shorts.* The band from just below the navel to mid-thigh is smoothed into
      a plain garment and shaded as fabric; the urogenital region is closed over.
-   - *Skin data.* Skin weights as in 3; per vertex, the id of the nearest
-     muscle, its position along that muscle, a swell weight and an activation
-     coverage; baked occlusion and relief.
+   - *Skin data.* Skin weights as in 3, blended wider around the shoulder
+     girdle; per vertex, the id of the muscle beneath (the nearest one, except
+     on the front of the abdomen, where it is the rectus abdominis inside its
+     sheath rather than the oblique that forms the sheath), its position along
+     that muscle, a swell weight and an activation coverage; baked occlusion
+     and relief.
 
 Apart from point 6, no shapes were invented or re-drawn; geometry is the
 atlas' own (decimated by the Svitylo release into the two quality levels).

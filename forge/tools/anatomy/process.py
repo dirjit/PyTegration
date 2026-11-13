@@ -974,7 +974,10 @@ def build_skin():
         head = "regions_of_head" in chain(e["id"])
         hand = bool(re.search(HAND_RX, nm))
         foot = bool(re.search(FOOT_RX, nm))
-        slab = head or hand or foot
+        ear = "auricular_region" in chain(e["id"])
+        # hands, feet and ears are thin: they keep their slabs. The rest of the
+        # head is reduced to its outer sheet like the body, but never reshaped.
+        slab = hand or foot or ear
         keep = np.ones(len(tri), bool) if slab else outer_sheet(v, tri, lambda p: core.query(p)[0])
         regions.append({"e": e, "nm": nm, "v": v, "vn": vn, "tri": tri, "keep": keep, "slab": slab})
         regions[-1]["flags"] = (head, hand, foot)
@@ -1023,7 +1026,7 @@ def build_skin():
         Vs.append(v[used])
         T0.append(remap[tri] + off)
         fl = np.zeros((len(used), 6))
-        fl[:, 5] = "urogenital" in e["id"]
+        fl[:, 5] = r["slab"]
         fl[:, 0] = head
         fl[:, 1] = hand
         fl[:, 2] = foot
@@ -1042,21 +1045,27 @@ def build_skin():
     T = T[(T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])]
     FL = np.zeros((len(V), 7))
     np.maximum.at(FL[:, :5], inv, flags0[:, :5])
-    FL[:, 5:] = 1
+    FL[:, 5] = 1
     np.minimum.at(FL[:, 5], inv, flags0[:, 4])  # nail only where every copy is nail
-    np.minimum.at(FL[:, 6], inv, flags0[:, 5])  # strictly inside the urogenital region
+    np.maximum.at(FL[:, 6], inv, flags0[:, 5])  # part of a slab (hand, foot, ear)
     T = T[np.unique(np.sort(T, axis=1), axis=0, return_index=True)[1]]  # overlaid sub-regions
     before = len(open_edges(T))
-    slabby = np.clip(FL[:, 0] + FL[:, 1] + FL[:, 2], 0, 1) > 0
+    # seams on the body are zipped generously; on the face only hairline ones,
+    # so the lips, eyelids and nostrils stay open
+    on_body = (FL[:, 6] == 0) & (FL[:, 0] == 0)
+    on_face = (FL[:, 6] == 0) & (FL[:, 0] > 0)
     for _ in range(3):
-        T = stitch(V, T, ~slabby)
-    V, T, FL = close_gaps(V, T, FL, ~slabby, big_at=uro.mean(0))
+        T = stitch(V, T, on_body)
+        T = stitch(V, T, on_face, eps=0.0006)
+    V, T, FL = close_gaps(V, T, FL, on_body, big_at=uro.mean(0))
+    on_face = (FL[:, 6] == 0) & (FL[:, 0] > 0)
+    V, T, FL = close_gaps(V, T, FL, on_face, snap=0.0006, max_size=0.012)
     # finer mesh on the body, so the skin can follow the muscle relief
-    slabby = np.clip(FL[:, 0] + FL[:, 1] + FL[:, 2], 0, 1) > 0
-    V, T, FL = subdivide(V, T, FL, ~slabby[T].all(1))
+    fixed = np.clip(FL[:, 0] + FL[:, 1] + FL[:, 2], 0, 1) > 0
+    V, T, FL = subdivide(V, T, FL, ~fixed[T].all(1))
     nv = len(V)
     nail = (FL[:, 5] > 0.99).astype(float)
-    slabby_sub = np.clip(FL[:, 0] + FL[:, 1] + FL[:, 2], 0, 1) > 0
+    slabby_sub = FL[:, 6] > 0
     A = adjacency_of(T, nv)
     oe = open_edges(T)
     oe = oe[~slabby_sub[oe].any(1)]
@@ -1115,13 +1124,13 @@ def build_skin():
     V = wrap(V, 0.9)
     V = relax(V, 2, 0.7 * body)
     V = wrap(V, 0.6)
-    V = relax(V, 2, 0.5 * body)
+    V = relax(V, 4, 0.6 * body)
     # fabric: smooth the band into a plain garment, then stand it off the body
     V = relax(V, 40, band)
     V = wrap(V, 0.7 * band)
     V = relax(V, 10, band)
     nrm = vertex_normals(V, T)
-    # Head, hands and feet keep the atlas' own shading normals. A welded vertex
+    # Hands, feet and ears keep the atlas' own shading normals. A welded vertex
     # on a slab's rim has several (sheet, wall); take the one facing outward.
     sv = np.concatenate([r["v"] for r in regions if r["slab"]])
     sn = np.concatenate([r["vn"] for r in regions if r["slab"]])
@@ -1134,10 +1143,20 @@ def build_skin():
     nrm[still[found]] = cand[np.arange(len(still)), best][found]
 
     # ---- skinning (same bone-distance scheme as the muscles)
-    W = bone_weights(V, soft=1.8)
+    # Hinge joints (elbow, knee, fingers) want a fairly tight blend or they
+    # pinch when bent; the shoulder girdle wants a wide one, or the skin folds
+    # into the armpit when the arm is raised. Blend the two by distance from
+    # the shoulder joint.
     handy = np.clip(FL[:, 1] + FL[:, 4], 0, 1) > 0
-    W = diffuse(A, W, 4)
-    W = diffuse(A, W, round(36 * fine), keep=handy)
+    W = diffuse(A, bone_weights(V, soft=1.0), 4)
+    W = diffuse(A, W, round(12 * fine), keep=handy)
+    Wide = diffuse(A, bone_weights(V, soft=2.6), round(90 * fine), keep=handy)
+    ds = np.minimum(
+        np.linalg.norm(V - J["shoulderL"], axis=1), np.linalg.norm(V - J["shoulderR"], axis=1)
+    )
+    girdle = np.clip((0.27 - ds) / 0.1, 0, 1)
+    girdle = girdle * girdle * (3 - 2 * girdle)
+    W = W * (1 - girdle)[:, None] + Wide * girdle[:, None]
     W /= W.sum(1, keepdims=True)
     j, w = top4(split_forearm(V, W))
 
@@ -1146,12 +1165,23 @@ def build_skin():
     mS = np.concatenate(out["muscle"]["S"])
     mM = np.concatenate(out["muscle"]["M"])
     md, mi = cKDTree(mP).query(V, workers=-1)
+    # The rectus abdominis lies inside a sheath formed by the flat oblique
+    # muscles, so the oblique is nearest to the skin of the front of the
+    # abdomen; what shows through there is the rectus beneath it.
+    sgroup = np.array([st.get("group") or "" for st in structs])
+    abs_v = np.where(sgroup[mS] == "abs")[0]
+    bd, bi = cKDTree(mP[abs_v]).query(V, workers=-1)
+    deeper = (sgroup[mS[mi]] == "obliques") & (bd < md + 0.012)
+    mi = np.where(deeper, abs_v[bi], mi)
+    md = np.where(deeper, np.minimum(bd, 0.012), md)
     S = mS[mi].astype(np.uint16)
     cover = np.clip(1 - (md - 0.012) / 0.014, 0, 1) * lean
     cover = diffuse(A, cover, 1)
     # how far inside its muscle's patch a vertex is: 0 on the border, 1 inside
     Ac = A.tocoo()
-    same = np.bincount(Ac.row, weights=Ac.data * (S[Ac.row] == S[Ac.col]), minlength=nv)
+    # (parts of one trained group count as one patch: the three heads of the deltoid)
+    grp = np.array([st.get("group") or f"#{k}" for k, st in enumerate(structs)])[S]
+    same = np.bincount(Ac.row, weights=Ac.data * (grp[Ac.row] == grp[Ac.col]), minlength=nv)
     inside = np.clip((A @ same - 0.55) / 0.4, 0, 1)
     # swelling with contraction: the belly only, fading out toward the borders
     # so neighbouring muscles in different states never step against each other
