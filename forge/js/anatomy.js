@@ -193,6 +193,7 @@ function patchMaterial(mat, kind, rig, S) {
     uTime: rig.uTime,
     uXray: { value: 0 },
     uShorts: { value: new THREE.Vector2(rig.meta.skin?.hem ?? 0, rig.meta.skin?.waist ?? 0) },
+    uNip: { value: (rig.meta.skin?.nipples ?? [[9, 9, 9], [9, 9, 9]]).map((p) => new THREE.Vector3(...p)) },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, mat.userData.uniforms);
@@ -245,7 +246,7 @@ if (vHide > 0.5) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);`);
     // -------------------------------------------------------------- fragment
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
 uniform vec3 uSel; uniform float uFault; uniform vec3 uSSSWrap; uniform float uSSSAmount;
-uniform float uTime; uniform float uXray; uniform vec2 uShorts;
+uniform float uTime; uniform float uXray; uniform vec2 uShorts; uniform vec3 uNip[2];
 varying float vAO; varying float vHL; varying float vSel; varying float vVar; varying float vHide; varying vec3 vBindPos;
 #ifdef ANAT_MUSCLE
 varying vec3 vBindCross; varying vec3 vBindFiber; varying float vTendon; varying float vAlong;
@@ -290,7 +291,10 @@ float aVar = aNoise3(vBindPos * 16.0) * 0.6 + aNoise3(vBindPos * 47.0) * 0.4;
   vec3 aSkin = diffuseColor.rgb * (0.93 + 0.12 * aVar);
   aSkin = mix(aSkin, aSkin * vec3(1.06, 0.9, 0.86), smoothstep(0.45, 0.9, aNoise3(vBindPos * 6.0)) * 0.5);
   aSkin *= mix(0.5, 1.14, smoothstep(0.08, 0.72, vRelief));       // muscle relief: creases darker, bellies brighter
-  aSkin = mix(aSkin, vec3(0.83, 0.66, 0.6), aNail * 0.7);
+  float aNd = min(distance(vBindPos, uNip[0]), distance(vBindPos, uNip[1]));
+  aSkin = mix(aSkin, aSkin * vec3(0.8, 0.6, 0.56), (1.0 - smoothstep(0.009, 0.015, aNd)) * 0.75); // areola
+  aSkin = mix(aSkin, aSkin * vec3(0.82, 0.66, 0.62), (1.0 - smoothstep(0.0025, 0.0055, aNd)) * 0.6); // nipple
+  aSkin = mix(aSkin, vec3(0.5, 0.31, 0.27), aNail * 0.8);
   // working muscle: flushed skin
   aSkin = mix(aSkin, aSkin * vec3(0.6, 0.17, 0.1), smoothstep(0.0, 0.9, aAct));
   vec3 aCloth = vec3(0.028, 0.031, 0.04) * (0.8 + 0.4 * aNoise(vBindPos.xy * 900.0));
@@ -310,7 +314,7 @@ float aVar = aNoise3(vBindPos * 16.0) * 0.6 + aNoise3(vBindPos * 47.0) * 0.4;
 #ifdef ANAT_DIGITS
   // finger pulp: pale, slightly mottled soft tissue; nail plates lighter and glossier
   diffuseColor.rgb *= 0.9 + 0.14 * aVar;
-  if (vVar > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.72, 0.66), 0.7);
+  if (vVar > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.5, 0.44), 0.7);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.3, 0.36, 0.48), uXray);
 #endif
 diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.2, 0.55, 0.55), uFault * 0.5);`);
@@ -319,13 +323,13 @@ diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.2, 0.55, 0.55
   roughnessFactor = clamp(mix(roughnessFactor, 0.4, smoothstep(0.12, 0.8, vTendon)) + (aVar - 0.5) * 0.08, 0.05, 1.0);
 #endif
 #ifdef ANAT_DIGITS
-  if (vVar > 0.5) roughnessFactor = 0.22;
+  if (vVar > 0.5) roughnessFactor = 0.38;
 #endif
 #ifdef ANAT_SKIN
   roughnessFactor = clamp(roughnessFactor + (aVar - 0.5) * 0.1, 0.05, 1.0);
   roughnessFactor = mix(roughnessFactor, 0.85, aShorts);
   roughnessFactor = mix(roughnessFactor, 0.55, aHair);
-  roughnessFactor = mix(roughnessFactor, 0.25, aNail);
+  roughnessFactor = mix(roughnessFactor, 0.62, aNail);
 #endif`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 #ifdef ANAT_SKIN
@@ -510,7 +514,7 @@ export class AnatomyRig {
         muscle: { color: 0x7e231b, roughness: 0.5, sheen: 0.35, sheenRoughness: 0.45, sheenColor: 0xd3958a, clearcoat: 0.1, clearcoatRoughness: 0.45, specularIntensity: 0.45 },
         fascia: { color: 0x7e231b, roughness: 0.45, sheen: 0.4, sheenRoughness: 0.4, sheenColor: 0xe6d8cc, clearcoat: 0.12, clearcoatRoughness: 0.4, specularIntensity: 0.5 },
         bone: { color: 0xcdbfa6, roughness: 0.62, specularIntensity: 0.35, sheen: 0.15, sheenColor: 0xffffff },
-        eye: { color: 0xf0ebe5, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.08 },
+        eye: { color: 0xd8cec4, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.08 },
         digits: { color: 0xc07f70, roughness: 0.6, sheen: 0.25, sheenRoughness: 0.6, sheenColor: 0xf3c2b4, specularIntensity: 0.35 },
         skin: { color: 0xa9694a, roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5, sheenColor: 0xffd9c4, specularIntensity: 0.4 },
       }[kind];

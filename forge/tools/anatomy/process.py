@@ -1129,6 +1129,25 @@ def build_skin():
     V = relax(V, 40, band)
     V = wrap(V, 0.7 * band)
     V = relax(V, 10, band)
+    # Navel (a dent) and nipples (a low bump): the atlas has regions for them
+    # but no relief, and a bare torso without them reads as a mannequin.
+    n0 = vertex_normals(V, T)
+    chest_v = lean > 0.5
+    nipples = []
+    for sd in ("l", "r"):
+        reg = next(e for e in parts if e["id"] == f"regions.mammary_region_{sd}")
+        c = verts(reg).mean(0)
+        near = np.where(chest_v & (np.hypot(V[:, 0] - c[0], V[:, 1] - c[1]) < 0.025))[0]
+        p = V[near[np.argmax(V[near, 2])]].copy()
+        nipples.append(p)
+    for p in nipples:
+        r = np.hypot(V[:, 0] - p[0], V[:, 1] - p[1])
+        k = np.clip(1 - (r / 0.007) ** 2, 0, 1) ** 2 * chest_v
+        V = V + n0 * (0.0022 * k)[:, None]
+    nav = np.concatenate([verts(e) for e in parts if "umbilicus" in e["id"]]).mean(0)
+    r = np.hypot(V[:, 0] - nav[0], V[:, 1] - nav[1])
+    k = np.clip(1 - (r / 0.013) ** 2, 0, 1) ** 2 * chest_v
+    V = V - n0 * (0.0055 * k)[:, None]
     nrm = vertex_normals(V, T)
     # Hands, feet and ears keep the atlas' own shading normals. A welded vertex
     # on a slab's rim has several (sheet, wall); take the one facing outward.
@@ -1176,18 +1195,29 @@ def build_skin():
     md = np.where(deeper, np.minimum(bd, 0.012), md)
     S = mS[mi].astype(np.uint16)
     cover = np.clip(1 - (md - 0.012) / 0.014, 0, 1) * lean
-    cover = diffuse(A, cover, 1)
+    cover = diffuse(A, cover, max(3, round(6 * fine)))
     # how far inside its muscle's patch a vertex is: 0 on the border, 1 inside
     Ac = A.tocoo()
     # (parts of one trained group count as one patch: the three heads of the deltoid)
     grp = np.array([st.get("group") or f"#{k}" for k, st in enumerate(structs)])[S]
     same = np.bincount(Ac.row, weights=Ac.data * (grp[Ac.row] == grp[Ac.col]), minlength=nv)
     inside = np.clip((A @ same - 0.55) / 0.4, 0, 1)
+    # Soft membership: spread each group's indicator over about a centimetre.
+    # The glow follows a smooth contour of this field, not the jagged border
+    # between which muscle each vertex happens to be nearest to.
+    trained = np.array([bool(st.get("group")) for st in structs])[S]
+    soft = np.zeros(nv)
+    for g in np.unique(grp[trained]):
+        x = (grp == g).astype(float)
+        d = diffuse(A, x, max(6, round(14 * fine)))
+        soft[grp == g] = d[grp == g]
+    glow = np.where(trained, np.clip((soft - 0.42) / 0.45, 0, 1), 0)
+    glow = glow * glow * (3 - 2 * glow)
     # swelling with contraction: the belly only, fading out toward the borders
     # so neighbouring muscles in different states never step against each other
     belly = np.clip(np.sin(np.pi * mM[mi, 0]), 0, 1) ** 1.3 * (1 - mM[mi, 2])
     swell = diffuse(A, np.minimum(mM[mi, 1], 0.3) / 0.3 * belly * inside * cover, 1)
-    M = np.c_[mM[mi, 0], swell, mM[mi, 2], cover * (0.5 + 0.5 * inside)].astype(np.float32)
+    M = np.c_[mM[mi, 0], swell, mM[mi, 2], cover * np.maximum(glow, 0.0)].astype(np.float32)
 
     # ---- shading helpers: occlusion (armpits, between the legs) and relief
     # (creases between muscles darken, bellies stay bright)
@@ -1233,7 +1263,12 @@ def build_skin():
         base += len(hv)
     o["A"] = [np.concatenate(o["A"])]
     voff["skin"] = base
-    return {"waist": round(waist, 4), "hem": round(hem, 4), "crotch": round(crotch, 4)}
+    return {
+        "waist": round(waist, 4),
+        "hem": round(hem, 4),
+        "crotch": round(crotch, 4),
+        "nipples": [[round(float(x), 4) for x in p] for p in nipples],
+    }
 
 
 out["skin"] = {k: [] for k in ("P", "N", "I", "J", "W", "S", "F", "M")}
