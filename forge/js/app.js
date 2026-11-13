@@ -220,7 +220,7 @@ if (lab) {
     const b = e.target.closest('button');
     if (!b) return;
     lab.setLayer(b.dataset.layer);
-    $$('#layerSeg button').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+    syncLayer();
   });
 
   $('#viewBtns').addEventListener('click', (e) => {
@@ -241,7 +241,7 @@ window.__forge = { get lab() { return lab; }, get hero() { return hero; } };
 async function loadAnatomy() {
   const status = $('#anatStatus');
   const lod = new URLSearchParams(location.search).get('quality') || chooseLOD();
-  status.textContent = `Loading anatomical model (${lod === 'standard' ? 'high detail, ~12 MB' : 'mobile detail, ~5 MB'})…`;
+  status.textContent = `Loading the athlete (${lod === 'standard' ? 'high detail, ~13 MB' : 'mobile detail, ~5 MB'})…`;
   try {
     const assets = await loadAnatomyAssets('assets/anatomy', lod);
     lab.useAnatomy(assets);
@@ -252,6 +252,12 @@ async function loadAnatomy() {
     console.warn('anatomy model failed to load', e);
     status.textContent = 'The anatomical model could not be loaded; showing the simplified figure.';
   }
+}
+
+/** Reflect the figure's current view in the segmented control. */
+function syncLayer() {
+  const mode = lab.rig.layer || lab._layer;
+  $$('#layerSeg button').forEach((x) => { const on = x.dataset.layer === mode; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); });
 }
 
 function showInspect(sid) {
@@ -289,6 +295,8 @@ if (lab) {
   $('#inspIsolate').addEventListener('click', () => {
     if (!lab.rig.isAnatomy || lab.selected == null) return;
     lab.rig.isolate(lab.rig.isolated == null);
+    lab._layer = lab.rig.layer; // isolating lifts the skin off
+    syncLayer();
     showInspect(lab.selected);
   });
 }

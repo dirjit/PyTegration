@@ -21,6 +21,17 @@
 //   - volume-preserving contraction: each muscle's radial distance from its
 //     line of action is scaled by sqrt(L0 / L), L measured live between the
 //     attachment points carried by their bones
+//
+// The athlete (skin) view
+//   - the atlas skin, drawn tight over the muscles by the pipeline; every skin
+//     vertex carries the id of the muscle beneath it, so the per-structure
+//     state texture drives the skin too
+//   - activation: working muscles glow through the skin (ember = prime mover,
+//     amber = assisting), with bands that travel along the muscle and a
+//     brightness that follows the tension of the rep
+//   - the skin bulges with the contraction of the muscle beneath it
+//   - X-ray: the skin becomes a faint shell and the muscles show inside it,
+//     the working ones lit, the rest dimmed
 // =============================================================================
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -32,7 +43,7 @@ const REST = {
   shoulderL: [0, 0, 7], shoulderR: [0, 0, -7],
   elbowL: [-6, 0, 0], elbowR: [-6, 0, 0],
 };
-const MESHES = ['muscle', 'fascia', 'bone', 'eye', 'digits'];
+const MESHES = ['muscle', 'fascia', 'bone', 'eye', 'digits', 'skin'];
 // Finger joint ranges (deg) at full grip: knuckle, middle, end joint.
 // Thumb: CMC opposition, MCP, IP. Real ranges, scaled by the grip amount.
 const FINGER_MAX = { 1: [38, 45, 50], 2: [78, 96, 58], 3: [82, 100, 60], 4: [84, 100, 58], 5: [86, 98, 56] };
@@ -165,7 +176,7 @@ vec3 aPerturb(vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir){
 
 function patchMaterial(mat, kind, rig, S) {
   const muscle = kind === 'muscle' || kind === 'fascia';
-  const sss = { muscle: [0.42, 0.16, 0.1], fascia: [0.2, 0.12, 0.08], bone: [0.18, 0.12, 0.08], digits: [0.4, 0.18, 0.12], eye: [0.1, 0.1, 0.1] }[kind];
+  const sss = { muscle: [0.42, 0.16, 0.1], fascia: [0.2, 0.12, 0.08], bone: [0.18, 0.12, 0.08], digits: [0.4, 0.18, 0.12], eye: [0.1, 0.1, 0.1], skin: [0.36, 0.17, 0.11] }[kind];
   const m3 = new THREE.Matrix3().setFromMatrix4(S);
   const scale = new THREE.Vector3().setFromMatrixScale(S);
   mat.userData.uniforms = {
@@ -179,6 +190,10 @@ function patchMaterial(mat, kind, rig, S) {
     uFault: { value: 0 },
     uSSSWrap: { value: new THREE.Vector3(...sss) },
     uSSSAmount: { value: kind === 'eye' ? 0 : 1 },
+    uTime: rig.uTime,
+    uXray: { value: 0 },
+    uShorts: { value: new THREE.Vector2(rig.meta.skin?.hem ?? 0, rig.meta.skin?.waist ?? 0) },
+    uNip: { value: (rig.meta.skin?.nipples ?? [[9, 9, 9], [9, 9, 9]]).map((p) => new THREE.Vector3(...p)) },
   };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, mat.userData.uniforms);
@@ -187,22 +202,36 @@ function patchMaterial(mat, kind, rig, S) {
     if (kind === 'eye') sh.defines.ANAT_EYE = '';
     if (kind === 'bone') sh.defines.ANAT_BONE = '';
     if (kind === 'digits') sh.defines.ANAT_DIGITS = '';
+    if (kind === 'skin') sh.defines.ANAT_SKIN = '';
     // ---------------------------------------------------------------- vertex
     sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
 attribute float sid;
 attribute vec2 ao;
 uniform sampler2D uState; uniform float uDeep; uniform mat4 uS; uniform mat3 uSN; uniform mat3 uInvS; uniform float uUnit;
-varying float vAO; varying float vHL; varying float vVar; varying float vHide; varying vec3 vBindPos;
+varying float vAO; varying float vHL; varying float vSel; varying float vVar; varying float vHide; varying vec3 vBindPos;
 #ifdef ANAT_MUSCLE
 attribute vec3 fiber; attribute vec4 musc;
-varying vec3 vBindCross; varying vec3 vBindFiber; varying float vTendon;
+varying vec3 vBindCross; varying vec3 vBindFiber; varying float vTendon; varying float vAlong;
+#endif
+#ifdef ANAT_SKIN
+attribute vec3 fiber; attribute vec4 musc;
+varying vec3 vFlags; varying float vAlong; varying float vRelief; varying float vBelly;
 #endif`);
     sh.vertexShader = sh.vertexShader.replace('#include <skinning_vertex>', `#include <skinning_vertex>
 vec4 aSt = texelFetch(uState, ivec2(int(sid + 0.5), 0), 0);
-vHL = aSt.g; vVar = aSt.a; vHide = aSt.b < 0.5 ? 1.0 : 0.0;
+vSel = step(1.5, aSt.g); vHL = aSt.g * (1.0 - vSel); vVar = aSt.a; vHide = aSt.b < 0.5 ? 1.0 : 0.0;
 vAO = mix(ao.x, ao.y, uDeep);
 vBindPos = (uS * vec4(position, 1.0)).xyz;
+#ifdef ANAT_SKIN
+  // the skin follows the muscle beneath it: it swells as that muscle
+  // shortens, and a little more while it is working
+  vAO = ao.x; vRelief = ao.y; vHide = 0.0; vVar = 0.0;
+  vFlags = fiber; vAlong = musc.x; vBelly = musc.y;
+  vHL *= musc.w; vSel *= musc.w;
+  transformed += normalize(objectNormal) * ((max(aSt.r, 0.0) * 0.02 + vHL * 0.002) * musc.y * uUnit);
+#endif
 #ifdef ANAT_MUSCLE
+  vAlong = musc.x;
   // volume-preserving contraction: thicken where the belly is, never the tendon
   float aBell = pow(max(sin(3.14159265 * musc.x), 0.0), 1.3) * (1.0 - musc.z);
   transformed += normalize(objectNormal) * (aSt.r * musc.y * 0.08 * aBell * uUnit);
@@ -217,10 +246,18 @@ if (vHide > 0.5) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);`);
     // -------------------------------------------------------------- fragment
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
 uniform vec3 uSel; uniform float uFault; uniform vec3 uSSSWrap; uniform float uSSSAmount;
-varying float vAO; varying float vHL; varying float vVar; varying float vHide; varying vec3 vBindPos;
+uniform float uTime; uniform float uXray; uniform vec2 uShorts; uniform vec3 uNip[2];
+varying float vAO; varying float vHL; varying float vSel; varying float vVar; varying float vHide; varying vec3 vBindPos;
 #ifdef ANAT_MUSCLE
-varying vec3 vBindCross; varying vec3 vBindFiber; varying float vTendon;
+varying vec3 vBindCross; varying vec3 vBindFiber; varying float vTendon; varying float vAlong;
 #endif
+#ifdef ANAT_SKIN
+varying vec3 vFlags; varying float vAlong; varying float vRelief; varying float vBelly;
+#endif
+// activation colour: amber (assisting) -> ember (prime mover)
+vec3 aHeat(float a){ return mix(vec3(1.0, 0.36, 0.03), vec3(1.0, 0.06, 0.01), smoothstep(0.3, 0.72, a)); }
+// bands travelling along the muscle, origin -> insertion
+float aFlow(float along){ return 0.78 + 0.22 * sin(along * 20.0 - uTime * 4.5); }
 ${NOISE}`);
     // wavelength-dependent wrap lighting (subsurface approximation), diffuse only
     sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>',
@@ -241,9 +278,35 @@ float aVar = aNoise3(vBindPos * 16.0) * 0.6 + aNoise3(vBindPos * 47.0) * 0.4;
   // exercise activation: richer, more saturated red (no glow)
   float aAct = clamp(vHL, 0.0, 1.0);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.32, 0.78, 0.7), aAct * (1.0 - aT));
+  // X-ray: resting muscles fall back to a cool, dark tone so the working ones read
+  float aRest = uXray * (1.0 - smoothstep(0.0, 0.25, aAct)) * (1.0 - vSel);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.5, 0.35, 0.15))) * vec3(0.5, 0.56, 0.68), aRest * 0.92);
+#endif
+#ifdef ANAT_SKIN
+  float aAct = clamp(vHL, 0.0, 1.0);
+  float aHair = step(0.5, vFlags.y);
+  float aNail = smoothstep(0.6, 0.95, vFlags.z);
+  float aShorts = step(0.5, vFlags.x) * step(uShorts.x, vBindPos.y) * step(vBindPos.y, uShorts.y) * (1.0 - aHair);
+  // skin: slight mottling, a little more red where blood is close to the surface
+  vec3 aSkin = diffuseColor.rgb * (0.93 + 0.12 * aVar);
+  aSkin = mix(aSkin, aSkin * vec3(1.06, 0.9, 0.86), smoothstep(0.45, 0.9, aNoise3(vBindPos * 6.0)) * 0.5);
+  aSkin *= mix(0.5, 1.14, smoothstep(0.08, 0.72, vRelief));       // muscle relief: creases darker, bellies brighter
+  float aNd = min(distance(vBindPos, uNip[0]), distance(vBindPos, uNip[1]));
+  aSkin = mix(aSkin, aSkin * vec3(0.8, 0.6, 0.56), (1.0 - smoothstep(0.009, 0.015, aNd)) * 0.75); // areola
+  aSkin = mix(aSkin, aSkin * vec3(0.82, 0.66, 0.62), (1.0 - smoothstep(0.0025, 0.0055, aNd)) * 0.6); // nipple
+  aSkin = mix(aSkin, vec3(0.5, 0.31, 0.27), aNail * 0.8);
+  // working muscle: flushed skin
+  aSkin = mix(aSkin, aSkin * vec3(0.6, 0.17, 0.1), smoothstep(0.0, 0.9, aAct));
+  vec3 aCloth = vec3(0.028, 0.031, 0.04) * (0.8 + 0.4 * aNoise(vBindPos.xy * 900.0));
+  aCloth = mix(aCloth, vec3(0.075, 0.08, 0.095), step(uShorts.y - 0.034, vBindPos.y));                                  // waistband
+  aCloth = mix(aCloth, vec3(0.8, 0.16, 0.04), step(uShorts.y - 0.021, vBindPos.y) * step(vBindPos.y, uShorts.y - 0.015)); // ember pinstripe
+  aCloth *= mix(0.7, 1.05, smoothstep(0.1, 0.75, vRelief));
+  diffuseColor.rgb = mix(aSkin, aCloth, aShorts);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.026, 0.02) * (0.7 + 0.6 * aVar), aHair);
 #endif
 #ifdef ANAT_BONE
   diffuseColor.rgb *= 0.92 + 0.12 * aVar;
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.3, 0.36, 0.48), uXray);
 #endif
 #ifdef ANAT_EYE
   if (vVar > 0.5) diffuseColor.rgb = vec3(0.24, 0.16, 0.11);
@@ -251,7 +314,8 @@ float aVar = aNoise3(vBindPos * 16.0) * 0.6 + aNoise3(vBindPos * 47.0) * 0.4;
 #ifdef ANAT_DIGITS
   // finger pulp: pale, slightly mottled soft tissue; nail plates lighter and glossier
   diffuseColor.rgb *= 0.9 + 0.14 * aVar;
-  if (vVar > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.72, 0.66), 0.7);
+  if (vVar > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.5, 0.44), 0.7);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.3, 0.36, 0.48), uXray);
 #endif
 diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.2, 0.55, 0.55), uFault * 0.5);`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -259,9 +323,24 @@ diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.2, 0.55, 0.55
   roughnessFactor = clamp(mix(roughnessFactor, 0.4, smoothstep(0.12, 0.8, vTendon)) + (aVar - 0.5) * 0.08, 0.05, 1.0);
 #endif
 #ifdef ANAT_DIGITS
-  if (vVar > 0.5) roughnessFactor = 0.22;
+  if (vVar > 0.5) roughnessFactor = 0.38;
+#endif
+#ifdef ANAT_SKIN
+  roughnessFactor = clamp(roughnessFactor + (aVar - 0.5) * 0.1, 0.05, 1.0);
+  roughnessFactor = mix(roughnessFactor, 0.85, aShorts);
+  roughnessFactor = mix(roughnessFactor, 0.55, aHair);
+  roughnessFactor = mix(roughnessFactor, 0.62, aNail);
 #endif`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+#ifdef ANAT_SKIN
+{
+  // pores / fine skin texture; fades out before it can alias
+  vec3 q = vBindPos * 1400.0;
+  float l = clamp(1.3 - length(fwidth(q)) * 0.9, 0.0, 1.0);
+  float h = aNoise3(q) * 0.00002 * l * (1.0 - aShorts) * (1.0 - aHair);
+  normal = aPerturb(-vViewPosition, normal, vec2(dFdx(h), dFdy(h)), faceDirection);
+}
+#endif
 #ifdef ANAT_MUSCLE
 {
   // anisotropic striation along the fibres: fine fibre bundles + fascicles
@@ -281,10 +360,20 @@ reflectedLight.indirectDiffuse *= vAO;
 reflectedLight.indirectSpecular *= mix(1.0, vAO, 0.8);
 reflectedLight.directDiffuse *= mix(1.0, vAO, 0.4);`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-if (vHL > 1.5) {
-  float aFr = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 2.5);
-  totalEmissiveRadiance += uSel * (0.1 + 0.55 * aFr);
-}`);
+float aFr = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 2.5);
+totalEmissiveRadiance += uSel * (0.1 + 0.55 * aFr) * vSel;
+#ifdef ANAT_SKIN
+{
+  // the working muscle glows through the skin
+  // hottest over the belly of the muscle, with a rim that reads from any angle
+  float aG = aAct * aAct * aFlow(vAlong) * (0.5 + 0.8 * vBelly);
+  totalEmissiveRadiance += aHeat(aAct) * aG * mix(0.6, 0.4, aShorts) * (0.75 + 0.7 * aFr) * (1.0 - aHair);
+}
+#endif
+#ifdef ANAT_MUSCLE
+  totalEmissiveRadiance += aHeat(aAct) * aAct * aAct * aFlow(vAlong) * 0.55 * uXray * (1.0 - smoothstep(0.12, 0.8, vTendon));
+#endif
+`);
   };
   mat.customProgramCacheKey = () => 'anat-' + kind;
   return mat;
@@ -302,6 +391,36 @@ if (texelFetch(uState, ivec2(int(sid + 0.5), 0), 0).b < 0.5) gl_Position = vec4(
   return m;
 }
 
+/** X-ray skin: a faint shell that is brightest at grazing angles. */
+function shellMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { uColor: { value: new THREE.Color(0xbfe3ff) }, uOpacity: { value: 1 } },
+    vertexShader: /* glsl */`
+#include <common>
+#include <skinning_pars_vertex>
+varying vec3 vN; varying vec3 vV;
+void main() {
+  #include <beginnormal_vertex>
+  #include <skinbase_vertex>
+  #include <skinnormal_vertex>
+  #include <defaultnormal_vertex>
+  #include <begin_vertex>
+  #include <skinning_vertex>
+  #include <project_vertex>
+  vN = normalize(transformedNormal); vV = -mvPosition.xyz;
+}`,
+    fragmentShader: /* glsl */`
+uniform vec3 uColor; uniform float uOpacity;
+varying vec3 vN; varying vec3 vV;
+void main() {
+  float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+  gl_FragColor = vec4(uColor, (0.035 + 0.6 * pow(f, 2.4)) * uOpacity);
+  #include <colorspace_fragment>
+}`,
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Rig
 // -----------------------------------------------------------------------------
@@ -314,6 +433,8 @@ export class AnatomyRig {
     this.bones = {};
     this.markers = {};
     this.layer = 'superficial';
+    this.hasSkin = !!meshes.skin;
+    this.uTime = { value: 0 };
     const J = meta.joints;
 
     // ---------------------------------------------------------------- skeleton
@@ -386,16 +507,19 @@ export class AnatomyRig {
     // ---------------------------------------------------------------- meshes
     const mk = (kind) => {
       if (ghost) {
-        return new THREE.MeshBasicMaterial({ color: 0x8fd8ff, transparent: true, opacity: 0.09, depthWrite: false });
+        // pushed back a little, so a ghost never speckles over the figure where the two coincide
+        return new THREE.MeshBasicMaterial({ color: 0x8fd8ff, transparent: true, opacity: 0.12, depthWrite: false, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 24 });
       }
       const base = {
         muscle: { color: 0x7e231b, roughness: 0.5, sheen: 0.35, sheenRoughness: 0.45, sheenColor: 0xd3958a, clearcoat: 0.1, clearcoatRoughness: 0.45, specularIntensity: 0.45 },
         fascia: { color: 0x7e231b, roughness: 0.45, sheen: 0.4, sheenRoughness: 0.4, sheenColor: 0xe6d8cc, clearcoat: 0.12, clearcoatRoughness: 0.4, specularIntensity: 0.5 },
         bone: { color: 0xcdbfa6, roughness: 0.62, specularIntensity: 0.35, sheen: 0.15, sheenColor: 0xffffff },
-        eye: { color: 0xf0ebe5, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.08 },
+        eye: { color: 0xd8cec4, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.08 },
         digits: { color: 0xc07f70, roughness: 0.6, sheen: 0.25, sheenRoughness: 0.6, sheenColor: 0xf3c2b4, specularIntensity: 0.35 },
+        skin: { color: 0xa9694a, roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5, sheenColor: 0xffd9c4, specularIntensity: 0.4 },
       }[kind];
-      return new THREE.MeshPhysicalMaterial({ metalness: 0, ...base });
+      // double-sided: a pinhole left in the atlas skin then shows skin, not the backdrop
+      return new THREE.MeshPhysicalMaterial({ metalness: 0, ...base, side: kind === 'skin' ? THREE.DoubleSide : THREE.FrontSide });
     };
     this.mats = {};
     this.meshes = {};
@@ -403,6 +527,8 @@ export class AnatomyRig {
     for (const kind of MESHES) {
       const src = meshes[kind];
       if (!src) continue;
+      // range ghosts are a clean silhouette: the skin alone when there is one
+      if (ghost && this.hasSkin && kind !== 'skin') continue;
       const mat = mk(kind);
       if (!ghost) patchMaterial(mat, kind, this, src.matrix);
       const m = new THREE.SkinnedMesh(src.geometry, mat);
@@ -412,7 +538,7 @@ export class AnatomyRig {
       m.frustumCulled = false;
       m.castShadow = !ghost && kind !== 'eye';
       m.receiveShadow = !ghost;
-      if (this.depthMat) m.customDepthMaterial = this.depthMat;
+      if (this.depthMat && kind !== 'skin') m.customDepthMaterial = this.depthMat;
       m.userData.kind = kind;
       this.object.add(m);
       this.mats[kind] = mat;
@@ -430,7 +556,12 @@ export class AnatomyRig {
       }
     });
     this._tmpM = new THREE.Matrix4();
-    this.setLayer(ghost ? 'ghost' : 'superficial');
+    if (this.hasSkin && !ghost) {
+      this.skinMat = this.mats.skin;
+      this.shellMat = shellMaterial();
+      this.meshes.skin.renderOrder = 2; // the X-ray shell draws over what is inside it
+    }
+    this.setLayer(ghost ? 'ghost' : this.hasSkin ? 'athlete' : 'superficial');
   }
 
   // --------------------------------------------------------------------------- posing
@@ -585,8 +716,12 @@ export class AnatomyRig {
     this.stateTex.needsUpdate = true;
   }
 
-  /** 'skin' | 'superficial' | 'deep' | 'skeleton' */
+  /** Advance the activation animation (seconds). */
+  setTime(t) { this.uTime.value = t; }
+
+  /** 'athlete' | 'xray' | 'superficial' | 'deep' | 'skeleton' */
   setLayer(mode) {
+    if (!this.hasSkin && (mode === 'athlete' || mode === 'xray')) mode = 'superficial';
     this.layer = mode;
     const st = this.state;
     const meta = this.meta;
@@ -599,13 +734,24 @@ export class AnatomyRig {
       st[i * 4 + 2] = vis ? 1 : 0;
     });
     this.stateTex.needsUpdate = true;
+    const xray = mode === 'xray';
     for (const [kind, m] of Object.entries(this.meshes)) {
       if (mode === 'ghost') { m.visible = kind !== 'eye'; continue; }
       if (kind === 'eye') m.visible = true;
+      else if (kind === 'skin') {
+        m.visible = mode === 'athlete' || xray;
+        m.material = xray ? this.shellMat : this.skinMat;
+        m.castShadow = !xray;
+      } else if (mode === 'athlete') m.visible = false;
       else if (kind === 'digits') m.visible = mode !== 'skeleton';
       else m.visible = true;
     }
-    for (const m of Object.values(this.mats)) if (m.userData.uniforms) m.userData.uniforms.uDeep.value = mode === 'deep' || mode === 'skeleton' ? 1 : 0;
+    for (const m of Object.values(this.mats)) {
+      const u = m.userData.uniforms;
+      if (!u) continue;
+      u.uDeep.value = mode === 'deep' || mode === 'skeleton' ? 1 : 0;
+      u.uXray.value = xray ? 1 : 0;
+    }
   }
 
   // --------------------------------------------------------------------------- inspection
@@ -619,12 +765,13 @@ export class AnatomyRig {
 
   isolate(on) {
     this.isolated = on ? this.selected : null;
-    this.setLayer(this.layer === 'skin' ? 'superficial' : this.layer);
+    // a single muscle can only be shown with the skin out of the way
+    this.setLayer(on && (this.layer === 'athlete' || this.layer === 'xray') ? 'superficial' : this.layer);
   }
 
   /** Raycast the visible anatomy; returns the structure id or null. */
   pick(raycaster) {
-    const targets = ['muscle', 'fascia', 'bone', 'eye', 'digits'].map((k) => this.meshes[k]).filter((m) => m && m.visible);
+    const targets = MESHES.map((k) => this.meshes[k]).filter((m) => m && m.visible);
     const hits = raycaster.intersectObjects(targets, false);
     for (const h of hits) {
       const sid = Math.round(h.object.geometry.getAttribute('sid').getX(h.face.a));

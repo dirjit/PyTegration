@@ -29,6 +29,7 @@ import sys
 
 import numpy as np
 from scipy import sparse
+from scipy.sparse import csgraph  # noqa: F401  (registers sparse.csgraph)
 from scipy.spatial import cKDTree
 
 WORK, REL, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -430,9 +431,7 @@ for e in bones:
 TREES = {s: cKDTree(np.concatenate(v)[::2]) for s, v in seg_pts.items()}
 
 
-def adjacency(e):
-    tri = I[e["i0"] : e["i0"] + e["in"]].reshape(-1, 3).astype(np.int64)
-    n = e["vn"]
+def adjacency_of(tri, n):
     r = np.r_[tri[:, 0], tri[:, 1], tri[:, 2], tri[:, 1], tri[:, 2], tri[:, 0]]
     c = np.r_[tri[:, 1], tri[:, 2], tri[:, 0], tri[:, 0], tri[:, 1], tri[:, 2]]
     A = sparse.coo_matrix((np.ones(len(r)), (r, c)), shape=(n, n)).tocsr()
@@ -442,11 +441,20 @@ def adjacency(e):
     return sparse.diags(1 / deg) @ A
 
 
+def adjacency(e):
+    tri = I[e["i0"] : e["i0"] + e["in"]].reshape(-1, 3).astype(np.int64)
+    return adjacency_of(tri, e["vn"])
+
+
 SIGMA = 0.018
 
 
-def soft_weights(e, smooth_iters=8):
-    v = verts(e)
+def bone_weights(v, soft=1.0):
+    """
+    Unsmoothed weights from distance to the bone surfaces of each segment.
+    `soft` widens the blend between segments (the skin lies further from the
+    bones than the muscles do and has to stretch across joints in one piece).
+    """
     D = np.full((len(v), len(SEGS)), np.inf)
     for s, t in TREES.items():
         D[:, SI[s]] = t.query(v, k=1, distance_upper_bound=0.35)[0]
@@ -459,11 +467,18 @@ def soft_weights(e, smooth_iters=8):
         # Short finger bones need tight blending so digits hinge at the joints
         # instead of bending like rubber; the palm blends a little wider.
         seg_name = SEGS[si]
-        sigma = 0.005 if seg_name[0] == "f" else 0.009 if seg_name.startswith("wrist") else SIGMA
+        sigma = (
+            0.005 if seg_name[0] == "f" else 0.009 if seg_name.startswith("wrist") else SIGMA * soft
+        )
         sub = np.exp(-(D[rows][:, allowed] - d0) / sigma)
         sub[~np.isfinite(sub)] = 0
         W[np.ix_(np.where(rows)[0], allowed)] = sub
     W /= W.sum(1, keepdims=True)
+    return W
+
+
+def soft_weights(e, smooth_iters=8):
+    W = bone_weights(verts(e))
     if smooth_iters and e["vn"] > 3:
         A = adjacency(e)
         for _ in range(smooth_iters):
@@ -510,6 +525,27 @@ GROUPS = [
 SUPERFICIAL = r"pectoralis major|deltoid|trapezius|latissimus|external abdominal oblique|rectus abdominis|sternocleidomastoid|platysma|gluteus maximus|tensor fasciae|sartorius|rectus femoris|gracilis|biceps brachii|long head of triceps|lateral head of triceps|brachioradialis|flexor carpi|palmaris longus|extensor carpi|extensor digitorum muscle|gastrocnemius|long head of biceps femoris|semitendinosus|serratus anterior|iliotibial|thoracolumbar|aponeurosis|retinacul|linea alba|transverse meta"
 
 
+# Extra belly thickness (metres) for a trained, muscular build.
+HYPERTROPHY = {
+    "chest": 0.019,
+    "delts": 0.02,
+    "biceps": 0.015,
+    "triceps": 0.015,
+    "forearms": 0.007,
+    "lats": 0.016,
+    "traps": 0.012,
+    "upperback": 0.006,
+    "abs": 0.004,
+    "obliques": 0.002,
+    "lowerback": 0.003,
+    "glutes": 0.009,
+    "quads": 0.014,
+    "hams": 0.011,
+    "calves": 0.011,
+    "adductors": 0.003,
+}
+
+
 def group_of(n):
     n = n.lower()
     for g, rx in GROUPS:
@@ -535,7 +571,7 @@ out = {
     for g in ("muscle", "fascia", "bone", "eye", "digits")
 }
 structs = []
-voff = {g: 0 for g in out}
+voff = dict.fromkeys(out, 0)
 skipped = 0
 for e in idx:
     cls = e["cls"]
@@ -642,6 +678,12 @@ for e in idx:
         if cls == "fascia":
             tendon[:] = 1
         M = np.c_[t, np.clip(r / 0.08, 0, 1), tendon, np.zeros(len(v))].astype(np.float32)
+        # Trained build: thicken the bellies of the muscles the programme
+        # trains (never the tendons), so the figure reads as an athlete.
+        grow = HYPERTROPHY.get(g, 0.0)
+        if grow and cls == "muscle":
+            belly = np.sin(np.pi * t) ** 1.3 * (1 - tendon)
+            v = v + n * (grow * belly)[:, None]
         rec["O"] = np.round(O, 5).tolist()
         rec["I"] = np.round(Ins, 5).tolist()
         rec["L0"] = round(float(L), 5)
@@ -664,6 +706,573 @@ for e in idx:
         rec["nail"] = True
     rec["mesh"] = cls
     structs.append(rec)
+
+# ----------------------------------------------------------------------------- skin: the athlete
+# The atlas' skin regions, welded into one surface and drawn tight over the
+# (thickened) muscles: subcutaneous fat is removed by pulling every skin vertex
+# down to a thin layer above the nearest muscle, fascia or bone, so the muscle
+# relief shows through. Head, hands and feet keep the atlas surface. Each skin
+# vertex remembers the muscle beneath it, which is how activation, contraction
+# and picking reach the skin at runtime.
+SKIN_T = 0.0028  # skin + fascia thickness left above the muscles
+SHORTS_T = 0.0075  # fabric stands a little further off
+HAIR_RX = r"^hairs of (head|eyebrow)|^eyelashes"
+HAND_RX = r"of hand$|^palm$|^nail plate$|^perionyx$"
+FOOT_RX = (
+    r"of foot|^sole$|^heel region$|malleol|\(foot\)|hallucial|metatarsal region|region of ankle"
+)
+ARM_RX = (
+    r"hand|forearm|wrist|elbow|cubital|region of arm|^palm$|nail plate$|perionyx$|foveola|bicipital"
+)
+
+
+def chain(sid):
+    out_ = []
+    while sid:
+        out_.append(sid)
+        sid = parent(sid)
+    return " ".join(out_)
+
+
+def vertex_normals(V, T):
+    fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]])
+    nv = np.zeros_like(V)
+    for k in range(3):
+        np.add.at(nv, T[:, k], fn)
+    return nv / (np.linalg.norm(nv, axis=1, keepdims=True) + 1e-12)
+
+
+def diffuse(A, x, iters, keep=None):
+    for _ in range(iters):
+        y = 0.5 * x + 0.5 * (A @ x)
+        x = y if keep is None else np.where(keep if x.ndim == 1 else keep[:, None], x, y)
+    return x
+
+
+def outer_sheet(v, tri, depth):
+    """
+    Faces of the outer sheet of a closed slab. A ray cast into the slab from
+    each face finds the sheet opposite; walls (long or oblique crossings) are
+    dropped, the remaining faces fall into connected sheets, and a sheet is the
+    outer one when it lies further from the muscles than what it faces.
+    """
+    key = np.round(v / 2e-5).astype(np.int64)
+    _, inv = np.unique(key, axis=0, return_inverse=True)
+    tw = inv.ravel()[tri]
+    a, b, c = v[tri[:, 0]], v[tri[:, 1]], v[tri[:, 2]]
+    fn = np.cross(b - a, c - a)
+    area = np.linalg.norm(fn, axis=1) + 1e-12
+    fn /= area[:, None]
+    cen = (a + b + c) / 3
+    e1, e2 = b - a, c - a
+    nf = len(tri)
+    hit_t = np.full(nf, np.inf)
+    hit_f = np.full(nf, -1)
+    for lo in range(0, nf, 256):  # Moller-Trumbore, rays x triangles
+        o = cen[lo : lo + 256, None, :]
+        d = -fn[lo : lo + 256, None, :]
+        p = np.cross(d, e2[None])
+        det = (e1[None] * p).sum(2)
+        ok = np.abs(det) > 1e-14
+        inv_det = 1 / np.where(ok, det, 1)
+        tv = o - a[None]
+        u = (tv * p).sum(2) * inv_det
+        q = np.cross(tv, e1[None])
+        w = (d * q).sum(2) * inv_det
+        t = (e2[None] * q).sum(2) * inv_det
+        ok &= (u >= -1e-6) & (w >= -1e-6) & (u + w <= 1 + 1e-6) & (t > 1e-6)
+        ok[np.arange(o.shape[0]), np.arange(lo, lo + o.shape[0])] = False
+        t = np.where(ok, t, np.inf)
+        hit_f[lo : lo + 256] = t.argmin(1)
+        hit_t[lo : lo + 256] = t.min(1)
+    found = np.isfinite(hit_t)
+    thick = np.median(hit_t[found]) if found.any() else 0.0
+    sheet = found & (hit_t < 3 * thick + 1e-4) & ((fn * fn[hit_f]).sum(1) < -0.5)
+    across = cen - fn * np.where(found, hit_t, 0)[:, None]
+    score = np.where(sheet, depth(cen) - depth(across), 0) * area
+    # connected sheets: faces that share an edge and face the same way. (The two
+    # sheets of a slab can touch along a knife edge; there they face opposite.)
+    fi = np.where(sheet)[0]
+    if not len(fi):
+        return np.zeros(nf, bool)
+    tf = tw[fi]
+    und = np.sort(np.concatenate([tf[:, [0, 1]], tf[:, [1, 2]], tf[:, [2, 0]]]), axis=1)
+    owner = np.tile(np.arange(len(fi)), 3)
+    _, eid = np.unique(und, axis=0, return_inverse=True)
+    order = np.argsort(eid.ravel(), kind="stable")
+    eo, fo = eid.ravel()[order], owner[order]
+    same = eo[1:] == eo[:-1]
+    p, q = fo[:-1][same], fo[1:][same]
+    agree = (fn[fi[p]] * fn[fi[q]]).sum(1) > 0.2
+    g = sparse.coo_matrix((np.ones(agree.sum()), (p[agree], q[agree])), shape=(len(fi), len(fi)))
+    _, lab = sparse.csgraph.connected_components(g, directed=False)
+    total = np.bincount(lab, weights=score[fi])
+    keep = np.zeros(nf, bool)
+    keep[fi] = total[lab] > 0
+    return keep
+
+
+def open_edges(T):
+    """Directed edges that belong to one face only (the rim of a gap)."""
+    he = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]])
+    und = np.sort(he, axis=1)
+    _, inv, cnt = np.unique(und, axis=0, return_inverse=True, return_counts=True)
+    return he[cnt[inv.ravel()] == 1]
+
+
+def stitch(V, T, ok_vert, eps=0.003):
+    """
+    Neighbouring regions meet along the same curve but with different vertices.
+    Wherever a rim vertex of one face lies on the rim edge of another, split
+    that edge there, so both sides share every vertex along the seam.
+    """
+    he = open_edges(T)
+    he = he[ok_vert[he].all(1)]
+    if not len(he):
+        return T
+    rim = np.unique(he)
+    tree = cKDTree(V[rim])
+    und = np.sort(np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]), axis=1)
+    face_of = {
+        (int(a), int(b)): f for f, (a, b) in zip(np.tile(np.arange(len(T)), 3), und, strict=True)
+    }
+    split = {}
+    for a, b in he:
+        pa, pb = V[a], V[b]
+        ab = pb - pa
+        ln = np.linalg.norm(ab)
+        if ln < 1e-9:
+            continue
+        near = rim[tree.query_ball_point((pa + pb) / 2, ln / 2 + eps)]
+        near = near[(near != a) & (near != b)]
+        if not len(near):
+            continue
+        t = ((V[near] - pa) @ ab) / (ln * ln)
+        off = np.linalg.norm(V[near] - (pa + np.outer(t, ab)), axis=1)
+        ok = (t * ln > eps) & ((1 - t) * ln > eps) & (off < eps)
+        if ok.any():
+            order = np.argsort(t[ok])
+            f = face_of[(min(int(a), int(b)), max(int(a), int(b)))]
+            split.setdefault(f, []).append((int(a), int(b), near[ok][order].tolist()))
+    if not split:
+        return T
+    keep = np.ones(len(T), bool)
+    new = []
+    for f, cuts in split.items():
+        keep[f] = False
+        poly = [int(x) for x in T[f]]
+        for a, b, pts in cuts:  # insert the points between a and b on the face's outline
+            i = poly.index(a)
+            if poly[(i + 1) % len(poly)] == b:
+                poly[i + 1 : i + 1] = pts
+        # fan from the corner that touches the fewest split edges
+        apex = max(T[f], key=lambda x: sum(x not in (a, b) for a, b, _ in cuts))
+        k = poly.index(int(apex))
+        poly = poly[k:] + poly[:k]
+        for i in range(1, len(poly) - 1):
+            new.append((poly[0], poly[i], poly[i + 1]))
+    T = np.concatenate([T[keep], np.array(new, dtype=T.dtype)])
+    return T[(T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])]
+
+
+def close_gaps(V, T, flags, ok_vert, snap=0.003, max_size=0.06, big_at=None, big_size=0.25):
+    """
+    The outer sheets of neighbouring regions do not tile exactly. Zip rims that
+    run side by side (snap their vertices together), then fan-fill the small
+    gaps that remain (and the one large gap around `big_at`, where a region was
+    left out on purpose). Returns the new vertices, faces and per-vertex flags.
+    """
+    rim = np.unique(open_edges(T))
+    rim = rim[ok_vert[rim]]
+    pairs = cKDTree(V[rim]).query_pairs(snap, output_type="ndarray")
+    if len(pairs):
+        g = sparse.coo_matrix(
+            (np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(len(rim), len(rim))
+        )
+        _, lab = sparse.csgraph.connected_components(g, directed=False)
+        first = np.full(lab.max() + 1, -1)
+        first[lab[::-1]] = rim[::-1]
+        to = np.arange(len(V))
+        to[rim] = first[lab]
+        T = to[T]
+        T = T[(T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])]
+    he = open_edges(T)
+    he = he[ok_vert[he].all(1)]
+    newV, newT, newF = [], [], []
+    if len(he):
+        rim, loc = np.unique(he, return_inverse=True)
+        loc = loc.reshape(-1, 2)
+        g = sparse.coo_matrix(
+            (np.ones(len(loc)), (loc[:, 0], loc[:, 1])), shape=(len(rim), len(rim))
+        )
+        _, lab = sparse.csgraph.connected_components(g, directed=False)
+        for k in range(lab.max() + 1):
+            ed = he[lab[loc[:, 0]] == k]
+            pts = V[np.unique(ed)]
+            c = pts.mean(0)
+            size = np.linalg.norm(np.ptp(pts, axis=0))
+            limit = (
+                big_size if big_at is not None and np.linalg.norm(c - big_at) < 0.09 else max_size
+            )
+            if len(ed) < 3 or size > limit:
+                continue
+            ci = len(V) + len(newV)
+            newV.append(c)
+            newF.append(flags[np.unique(ed)].min(0))
+            for a, b in ed:  # the rim runs a->b on its face, so the fill runs b->a
+                newT.append((b, a, ci))
+    if newV:
+        V = np.concatenate([V, np.array(newV)])
+        T = np.concatenate([T, np.array(newT)])
+        flags = np.concatenate([flags, np.array(newF)])
+    used = np.unique(T)
+    remap = np.full(len(V), -1)
+    remap[used] = np.arange(len(used))
+    return V[used], remap[T], flags[used]
+
+
+def subdivide(V, T, flags, which):
+    """Split the chosen faces 1 -> 4 (edge midpoints); the rest stay as they are."""
+    Ts = T[which]
+    und = np.sort(np.concatenate([Ts[:, [0, 1]], Ts[:, [1, 2]], Ts[:, [2, 0]]]), axis=1)
+    edges, inv = np.unique(und, axis=0, return_inverse=True)
+    mid = len(V) + inv.ravel().reshape(3, -1).T  # per face: midpoints of ab, bc, ca
+    a, b, c = Ts[:, 0], Ts[:, 1], Ts[:, 2]
+    ab, bc, ca = mid[:, 0], mid[:, 1], mid[:, 2]
+    T4 = np.concatenate([np.c_[a, ab, ca], np.c_[ab, b, bc], np.c_[ca, bc, c], np.c_[ab, bc, ca]])
+    V = np.concatenate([V, V[edges].mean(1)])
+    flags = np.concatenate([flags, flags[edges].mean(1)])
+    return V, np.concatenate([T[~which], T4]), flags
+
+
+def build_skin():
+    parts = [
+        e
+        for e in idx
+        if e["system"] == "regions" and e["id"] and e["vn"] >= 3 and "pubic" not in e["id"]
+    ]
+    uro = np.concatenate([verts(e) for e in parts if "urogenital" in e["id"]])
+    parts = [e for e in parts if "urogenital" not in e["id"]]  # closed over, under the shorts
+    surf = [e for e in parts if not re.search(HAIR_RX, name(e["id"]).lower())]
+    hair = [e for e in parts if re.search(HAIR_RX, name(e["id"]).lower())]
+
+    # ---- weld the regions into one surface
+    # Every atlas region is a closed slab (outer face, inner face, side walls).
+    # On the body only the outer faces are kept, so the regions join into one
+    # sheet; head, hands and feet keep their slabs (ears and digits are thin).
+    core = cKDTree(np.concatenate([verts(e) for e in idx if e["cls"] in ("muscle", "bone")]))
+    regions = []
+    for e in surf:
+        nm = name(e["id"]).lower()
+        v = verts(e)
+        tri = I[e["i0"] : e["i0"] + e["in"]].astype(np.int64).reshape(-1, 3)
+        # mirrored (left) regions come inside-out: make every slab face outward
+        vn = N[e["v0"] : e["v0"] + e["vn"]]
+        if np.einsum("ij,ij->i", v[tri[:, 0]], np.cross(v[tri[:, 1]], v[tri[:, 2]])).sum() < 0:
+            tri = tri[:, ::-1]
+            vn = -vn
+        head = "regions_of_head" in chain(e["id"])
+        hand = bool(re.search(HAND_RX, nm))
+        foot = bool(re.search(FOOT_RX, nm))
+        ear = "auricular_region" in chain(e["id"])
+        # hands, feet and ears are thin: they keep their slabs. The rest of the
+        # head is reduced to its outer sheet like the body, but never reshaped.
+        slab = hand or foot or ear
+        keep = np.ones(len(tri), bool) if slab else outer_sheet(v, tri, lambda p: core.query(p)[0])
+        regions.append({"e": e, "nm": nm, "v": v, "vn": vn, "tri": tri, "keep": keep, "slab": slab})
+        regions[-1]["flags"] = (head, hand, foot)
+
+    # Second pass: faces next to the outer sheet that continue it (same level,
+    # same facing) belong to it too. This closes the corners where regions meet
+    # and recovers regions whose slab is too thin to split by ray casting.
+    body = [r for r in regions if not r["slab"]]
+    cen = np.concatenate([r["v"][r["tri"]].mean(1) for r in body])
+    fnr = np.concatenate(
+        [
+            np.cross(
+                r["v"][r["tri"][:, 1]] - r["v"][r["tri"][:, 0]],
+                r["v"][r["tri"][:, 2]] - r["v"][r["tri"][:, 0]],
+            )
+            for r in body
+        ]
+    )
+    fnr /= np.linalg.norm(fnr, axis=1, keepdims=True) + 1e-12
+    acc = np.concatenate([r["keep"] for r in body])
+    for _ in range(8):
+        todo = np.where(~acc)[0]
+        d, qi = cKDTree(cen[acc]).query(cen[todo], distance_upper_bound=0.02)
+        ok = np.isfinite(d)
+        qa = np.where(acc)[0][np.where(ok, qi, 0)]
+        level = ((cen[todo] - cen[qa]) * fnr[qa]).sum(1)
+        ok &= ((fnr[todo] * fnr[qa]).sum(1) > 0.6) & (level > -0.0015) & (level < 0.004)
+        if not ok.any():
+            break
+        acc[todo[ok]] = True
+    k = 0
+    for r in body:
+        r["keep"] = acc[k : k + len(r["tri"])]
+        k += len(r["tri"])
+
+    Vs, T0, flags0 = [], [], []
+    off = 0
+    for r in regions:
+        e, nm, v, tri = r["e"], r["nm"], r["v"], r["tri"][r["keep"]]
+        head, hand, foot = r["flags"]
+        if not len(tri):
+            continue
+        used = np.unique(tri)
+        remap = np.full(len(v), -1)
+        remap[used] = np.arange(len(used))
+        Vs.append(v[used])
+        T0.append(remap[tri] + off)
+        fl = np.zeros((len(used), 6))
+        fl[:, 5] = r["slab"]
+        fl[:, 0] = head
+        fl[:, 1] = hand
+        fl[:, 2] = foot
+        fl[:, 3] = not re.search(ARM_RX, nm)  # may carry the shorts
+        fl[:, 4] = "nail plate" in nm
+        flags0.append(fl)
+        off += len(used)
+    V0 = np.concatenate(Vs)
+    T0 = np.concatenate(T0)
+    flags0 = np.concatenate(flags0)
+    key = np.round(V0 / 2e-5).astype(np.int64)
+    _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    inv = inv.ravel()
+    V = V0[first]
+    T = inv[T0]
+    T = T[(T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])]
+    FL = np.zeros((len(V), 7))
+    np.maximum.at(FL[:, :5], inv, flags0[:, :5])
+    FL[:, 5] = 1
+    np.minimum.at(FL[:, 5], inv, flags0[:, 4])  # nail only where every copy is nail
+    np.maximum.at(FL[:, 6], inv, flags0[:, 5])  # part of a slab (hand, foot, ear)
+    T = T[np.unique(np.sort(T, axis=1), axis=0, return_index=True)[1]]  # overlaid sub-regions
+    before = len(open_edges(T))
+    # seams on the body are zipped generously; on the face only hairline ones,
+    # so the lips, eyelids and nostrils stay open
+    on_body = (FL[:, 6] == 0) & (FL[:, 0] == 0)
+    on_face = (FL[:, 6] == 0) & (FL[:, 0] > 0)
+    for _ in range(3):
+        T = stitch(V, T, on_body)
+        T = stitch(V, T, on_face, eps=0.0006)
+    V, T, FL = close_gaps(V, T, FL, on_body, big_at=uro.mean(0))
+    on_face = (FL[:, 6] == 0) & (FL[:, 0] > 0)
+    V, T, FL = close_gaps(V, T, FL, on_face, snap=0.0006, max_size=0.012)
+    # finer mesh on the body, so the skin can follow the muscle relief
+    fixed = np.clip(FL[:, 0] + FL[:, 1] + FL[:, 2], 0, 1) > 0
+    V, T, FL = subdivide(V, T, FL, ~fixed[T].all(1))
+    nv = len(V)
+    nail = (FL[:, 5] > 0.99).astype(float)
+    slabby_sub = FL[:, 6] > 0
+    A = adjacency_of(T, nv)
+    oe = open_edges(T)
+    oe = oe[~slabby_sub[oe].any(1)]
+    print("skin", nv, "verts", len(T), "tris; open edges on the body", before, "->", len(oe))
+
+    # ---- what lies underneath: muscles (as built above), fasciae, bones
+    def cloud_of(g):
+        Pg = np.concatenate(out[g]["P"]).astype(np.float64)
+        Tg = np.concatenate(out[g]["I"]).reshape(-1, 3)
+        return np.concatenate([Pg, Pg[Tg].mean(1)])
+
+    cloud = np.concatenate([cloud_of(g) for g in ("muscle", "fascia", "bone")])
+    tree = cKDTree(cloud)
+
+    # ---- shorts band (bind-space heights)
+    navel = np.concatenate([verts(e) for e in surf if "umbilicus" in e["id"]])
+    crotch = float(np.quantile(uro[:, 1], 0.05))
+    waist = float(navel[:, 1].mean() - 0.045)
+    hem = crotch - 0.11
+    elig = FL[:, 3] > 0.5
+    in_band = elig & (V[:, 1] > hem) & (V[:, 1] < waist)
+    band = diffuse(A, in_band.astype(float), 3)
+
+    # ---- draw the skin tight
+    lean = (np.clip(FL[:, 0] + FL[:, 1] + FL[:, 2], 0, 1) == 0).astype(float)
+    lean = diffuse(A, lean, 16, keep=lean == 0)  # ease out toward head/hands/feet
+    thick = SKIN_T + (SHORTS_T - SKIN_T) * band
+
+    def wrap(V, amount):
+        nrm = vertex_normals(V, T)
+        d, qi = tree.query(V, workers=-1)
+        to = cloud[qi] - V
+        d = np.maximum(d, 1e-6)
+        along = (to * nrm).sum(1)
+        pull = to * (1 - thick / d)[:, None]  # down to the thin layer / back out of it
+        under = (along > 0) & (d < 0.03)  # the muscle now stands proud of the old skin
+        pull[under] = nrm[under] * (along[under] + thick[under])[:, None]
+        ln = np.linalg.norm(pull, axis=1, keepdims=True)
+        pull *= np.minimum(1, 0.05 / (ln + 1e-9))
+        return V + pull * (amount * lean)[:, None]
+
+    # smoothing reaches one edge per pass: finer meshes need more passes
+    # for the same result (counts below are for 5 mm edges)
+    bt = T[lean[T].min(1) > 0.5]
+    edge = np.linalg.norm(V[bt[:, 0]] - V[bt[:, 1]], axis=1).mean()
+    fine = (0.005 / edge) ** 2
+
+    def relax(V, iters, w):
+        for _ in range(max(1, round(iters * fine))):
+            V = V + (A @ V - V) * (0.5 * w)[:, None]
+        return V
+
+    body = lean * (1 - band)
+    V = wrap(V, 1.0)
+    V = relax(V, 3, body)
+    V = wrap(V, 0.9)
+    V = relax(V, 2, 0.7 * body)
+    V = wrap(V, 0.6)
+    V = relax(V, 4, 0.6 * body)
+    # fabric: smooth the band into a plain garment, then stand it off the body
+    V = relax(V, 40, band)
+    V = wrap(V, 0.7 * band)
+    V = relax(V, 10, band)
+    # Navel (a dent) and nipples (a low bump): the atlas has regions for them
+    # but no relief, and a bare torso without them reads as a mannequin.
+    n0 = vertex_normals(V, T)
+    chest_v = lean > 0.5
+    nipples = []
+    for sd in ("l", "r"):
+        reg = next(e for e in parts if e["id"] == f"regions.mammary_region_{sd}")
+        c = verts(reg).mean(0)
+        near = np.where(chest_v & (np.hypot(V[:, 0] - c[0], V[:, 1] - c[1]) < 0.025))[0]
+        p = V[near[np.argmax(V[near, 2])]].copy()
+        nipples.append(p)
+    for p in nipples:
+        r = np.hypot(V[:, 0] - p[0], V[:, 1] - p[1])
+        k = np.clip(1 - (r / 0.007) ** 2, 0, 1) ** 2 * chest_v
+        V = V + n0 * (0.0022 * k)[:, None]
+    nav = np.concatenate([verts(e) for e in parts if "umbilicus" in e["id"]]).mean(0)
+    r = np.hypot(V[:, 0] - nav[0], V[:, 1] - nav[1])
+    k = np.clip(1 - (r / 0.013) ** 2, 0, 1) ** 2 * chest_v
+    V = V - n0 * (0.0055 * k)[:, None]
+    nrm = vertex_normals(V, T)
+    # Hands, feet and ears keep the atlas' own shading normals. A welded vertex
+    # on a slab's rim has several (sheet, wall); take the one facing outward.
+    sv = np.concatenate([r["v"] for r in regions if r["slab"]])
+    sn = np.concatenate([r["vn"] for r in regions if r["slab"]])
+    still = np.where(slabby_sub)[0]
+    dn, qn = cKDTree(sv).query(V[still], k=8, distance_upper_bound=3e-5)
+    cand = sn[np.minimum(qn, len(sn) - 1)]
+    dots = np.where(np.isfinite(dn), np.einsum("ikj,ij->ik", cand, nrm[still]), -2)
+    best = dots.argmax(1)
+    found = dots.max(1) > -1.5
+    nrm[still[found]] = cand[np.arange(len(still)), best][found]
+
+    # ---- skinning (same bone-distance scheme as the muscles)
+    # Hinge joints (elbow, knee, fingers) want a fairly tight blend or they
+    # pinch when bent; the shoulder girdle wants a wide one, or the skin folds
+    # into the armpit when the arm is raised. Blend the two by distance from
+    # the shoulder joint.
+    handy = np.clip(FL[:, 1] + FL[:, 4], 0, 1) > 0
+    W = diffuse(A, bone_weights(V, soft=1.0), 4)
+    W = diffuse(A, W, round(12 * fine), keep=handy)
+    Wide = diffuse(A, bone_weights(V, soft=2.6), round(90 * fine), keep=handy)
+    ds = np.minimum(
+        np.linalg.norm(V - J["shoulderL"], axis=1), np.linalg.norm(V - J["shoulderR"], axis=1)
+    )
+    girdle = np.clip((0.27 - ds) / 0.1, 0, 1)
+    girdle = girdle * girdle * (3 - 2 * girdle)
+    W = W * (1 - girdle)[:, None] + Wide * girdle[:, None]
+    W /= W.sum(1, keepdims=True)
+    j, w = top4(split_forearm(V, W))
+
+    # ---- the muscle beneath each vertex
+    mP = np.concatenate(out["muscle"]["P"]).astype(np.float64)
+    mS = np.concatenate(out["muscle"]["S"])
+    mM = np.concatenate(out["muscle"]["M"])
+    md, mi = cKDTree(mP).query(V, workers=-1)
+    # The rectus abdominis lies inside a sheath formed by the flat oblique
+    # muscles, so the oblique is nearest to the skin of the front of the
+    # abdomen; what shows through there is the rectus beneath it.
+    sgroup = np.array([st.get("group") or "" for st in structs])
+    abs_v = np.where(sgroup[mS] == "abs")[0]
+    bd, bi = cKDTree(mP[abs_v]).query(V, workers=-1)
+    deeper = (sgroup[mS[mi]] == "obliques") & (bd < md + 0.012)
+    mi = np.where(deeper, abs_v[bi], mi)
+    md = np.where(deeper, np.minimum(bd, 0.012), md)
+    S = mS[mi].astype(np.uint16)
+    cover = np.clip(1 - (md - 0.012) / 0.014, 0, 1) * lean
+    cover = diffuse(A, cover, max(3, round(6 * fine)))
+    # how far inside its muscle's patch a vertex is: 0 on the border, 1 inside
+    Ac = A.tocoo()
+    # (parts of one trained group count as one patch: the three heads of the deltoid)
+    grp = np.array([st.get("group") or f"#{k}" for k, st in enumerate(structs)])[S]
+    same = np.bincount(Ac.row, weights=Ac.data * (grp[Ac.row] == grp[Ac.col]), minlength=nv)
+    inside = np.clip((A @ same - 0.55) / 0.4, 0, 1)
+    # Soft membership: spread each group's indicator over about a centimetre.
+    # The glow follows a smooth contour of this field, not the jagged border
+    # between which muscle each vertex happens to be nearest to.
+    trained = np.array([bool(st.get("group")) for st in structs])[S]
+    soft = np.zeros(nv)
+    for g in np.unique(grp[trained]):
+        x = (grp == g).astype(float)
+        d = diffuse(A, x, max(6, round(14 * fine)))
+        soft[grp == g] = d[grp == g]
+    glow = np.where(trained, np.clip((soft - 0.42) / 0.45, 0, 1), 0)
+    glow = glow * glow * (3 - 2 * glow)
+    # swelling with contraction: the belly only, fading out toward the borders
+    # so neighbouring muscles in different states never step against each other
+    belly = np.clip(np.sin(np.pi * mM[mi, 0]), 0, 1) ** 1.3 * (1 - mM[mi, 2])
+    swell = diffuse(A, np.minimum(mM[mi, 1], 0.3) / 0.3 * belly * inside * cover, 1)
+    M = np.c_[mM[mi, 0], swell, mM[mi, 2], cover * np.maximum(glow, 0.0)].astype(np.float32)
+
+    # ---- shading helpers: occlusion (armpits, between the legs) and relief
+    # (creases between muscles darken, bellies stay bright)
+    tree_s = cKDTree(V)
+    occ = np.zeros(nv)
+    for dist_, wgt in ((0.012, 0.4), (0.03, 0.35), (0.06, 0.25)):
+        dd, _ = tree_s.query(V + nrm * dist_, workers=-1)
+        occ += wgt * np.clip(1 - dd / (0.8 * dist_), 0, 1)
+    ao = np.clip(1 - 0.8 * occ, 0.3, 1)
+    # relief at a fixed physical scale (about 1.5 cm), whatever the mesh density
+    wide = diffuse(A, V, max(2, round(6 * fine)))
+    relief = diffuse(A, np.clip(0.5 - ((wide - V) * nrm).sum(1) / 0.004, 0, 1), 1)
+    F = np.c_[FL[:, 3], np.zeros(nv), nail * FL[:, 4]].astype(np.float32)
+
+    o = out["skin"]
+    o["P"].append(V.astype(np.float32))
+    o["N"].append(nrm.astype(np.float32))
+    o["I"].append(T.astype(np.uint32).ravel())
+    o["J"].append(j)
+    o["W"].append(w)
+    o["S"].append(S)
+    o["F"].append(F)
+    o["M"].append(M)
+    o["A"] = [np.c_[ao, relief].astype(np.float32)]
+    base = nv
+
+    # ---- hair, eyebrows, lashes ride on the head
+    for e in hair:
+        hv = verts(e)
+        o["P"].append(hv.astype(np.float32))
+        o["N"].append(N[e["v0"] : e["v0"] + e["vn"]].astype(np.float32))
+        o["I"].append(I[e["i0"] : e["i0"] + e["in"]].astype(np.uint32) + base)
+        hj = np.zeros((len(hv), 4), np.uint8)
+        hj[:, 0] = SI["head"]
+        hw = np.zeros((len(hv), 4), np.float32)
+        hw[:, 0] = 1
+        o["J"].append(hj)
+        o["W"].append(hw)
+        o["S"].append(np.full(len(hv), S[cKDTree(V).query(hv.mean(0))[1]], np.uint16))
+        o["F"].append(np.tile(np.float32([0, 1, 0]), (len(hv), 1)))
+        o["M"].append(np.zeros((len(hv), 4), np.float32))
+        o["A"].append(np.ones((len(hv), 2), np.float32) * np.float32([1, 0.5]))
+        base += len(hv)
+    o["A"] = [np.concatenate(o["A"])]
+    voff["skin"] = base
+    return {
+        "waist": round(waist, 4),
+        "hem": round(hem, 4),
+        "crotch": round(crotch, 4),
+        "nipples": [[round(float(x), 4) for x in p] for p in nipples],
+    }
+
+
+out["skin"] = {k: [] for k in ("P", "N", "I", "J", "W", "S", "F", "M")}
+SKIN_META = build_skin()
 
 # ----------------------------------------------------------------------------- baked ambient occlusion
 # Probe points just above each vertex along its normal; a probe that lands
@@ -818,6 +1427,7 @@ dump_json(
         "joints": {k: [round(float(x), 5) for x in v] for k, v in J.items() if k in SEGS},
         "fingers": FINGERS,
         "markers": markers,
+        "skin": SKIN_META,
         "structures": structs,
     },
     f"{OUT}/anatomy.json",

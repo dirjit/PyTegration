@@ -1,11 +1,14 @@
 // =============================================================================
 // pack.mjs — step 3 of the anatomy asset pipeline.
 // Builds one GLB per quality level from process.py's buffers:
-//   meshes: muscle, fascia, bone, eye, skin
+//   meshes: muscle, fascia, bone, eye, digits, skin
 //   attributes: POSITION, NORMAL, JOINTS_0, WEIGHTS_0 (skinning, no glTF skin:
 //   the runtime builds its own skeleton from anatomy.json), _SID (structure),
 //   _FIBER (fibre direction, int8), _MUSC (t along line of action, radial
 //   distance /8 cm, tendon factor; uint8)
+//   skin reuses them: _SID = muscle beneath, _MUSC = (t along that muscle,
+//   swell weight, tendon factor, glow coverage), _FIBER = (may carry shorts,
+//   hair, nail), _AO = (occlusion, relief)
 // Then quantises positions/normals and applies EXT_meshopt_compression.
 // usage: node pack.mjs <proc-dir> <out.glb>
 // =============================================================================
@@ -30,7 +33,7 @@ const read = (g, k, spec) => {
 };
 const acc = (arr, type, normalized = false) => doc.createAccessor().setArray(arr).setType(type).setNormalized(normalized).setBuffer(buf);
 
-for (const g of ['muscle', 'fascia', 'bone', 'eye', 'digits']) {
+for (const g of ['muscle', 'fascia', 'bone', 'eye', 'digits', 'skin']) {
   const sp = path.join(DIR, `${g}.spec.json`);
   if (!fs.existsSync(sp)) continue;
   const spec = JSON.parse(fs.readFileSync(sp, 'utf8'));
@@ -57,7 +60,7 @@ for (const g of ['muscle', 'fascia', 'bone', 'eye', 'digits']) {
     .setAttribute('_SID', acc(new Uint16Array(Ss), 'SCALAR'))
     .setAttribute('_AO', acc(Uint8Array.from(Aa, (x) => Math.round(x * 255)), 'VEC2', true))
     .setIndices(acc(n < 65535 ? new Uint16Array(Ii) : new Uint32Array(Ii), 'SCALAR'));
-  if (g === 'muscle' || g === 'fascia') {
+  if (g === 'muscle' || g === 'fascia' || g === 'skin') {
     prim.setAttribute('_FIBER', acc(F8, 'VEC3', true));
     prim.setAttribute('_MUSC', acc(M8, 'VEC4', true));
   }

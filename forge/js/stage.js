@@ -850,9 +850,12 @@ export class Stage {
     this._pose(pose, this.rig);
 
     // Tension drives the muscle glow: brightest under load / in the stretch.
+    // Eased, so the glow swells into the hard part of the rep instead of snapping.
     const ten = s.seg.tension ?? (s.seg.from === s.seg.to ? 0.35 : 0.9);
-    const pulse = 0.85 + 0.15 * Math.sin(this.time * 6);
-    this.rig.setHighlight(this.ex.primary, this.ex.secondary, ten * pulse, this.toggles.fault ? 1 : 0);
+    this.tension = this.tension == null ? ten : this.tension + (ten - this.tension) * (1 - Math.exp(-dt * 5));
+    const pulse = 0.9 + 0.1 * Math.sin(this.time * 6);
+    this.rig.setHighlight(this.ex.primary, this.ex.secondary, this.tension * pulse, this.toggles.fault ? 1 : 0);
+    this.rig.setTime?.(this.clock.elapsedTime);
 
     if (this.rig.updateContraction) this.rig.updateContraction();
     this._updateKB();

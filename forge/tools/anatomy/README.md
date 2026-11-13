@@ -25,5 +25,5 @@ cp proc/standard/anatomy.json ../../assets/anatomy/anatomy.json
 | step | file | does |
 | --- | --- | --- |
 | 1 | `extract.mjs` | decodes the meshopt chunks, splits them into structures by `_ID` |
-| 2 | `process.py` | classification, skeleton from bones, skin weights, fibre/tendon/AO attributes, markers |
-| 3 | `pack.mjs` | merges into 5 meshes, quantises, meshopt-compresses |
+| 2 | `process.py` | classification, skeleton from bones, skin weights, fibre/tendon/AO attributes, markers; thickens the trained muscles and builds the athlete's skin (outer sheets of the atlas skin regions, stitched, subdivided, drawn tight over the muscles, mapped to the muscle beneath) |
+| 3 | `pack.mjs` | merges into 6 meshes, quantises, meshopt-compresses |
