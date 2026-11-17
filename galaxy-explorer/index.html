@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<title>Galaxy System Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: full-bleed WebGL canvas, floating top bar, bottom stack (time bar + info card), right-hand drawer for search. */
+:root{
+  --bg:#04060d;            /* deep space, slight blue bias */
+  --panel:rgba(9,13,25,.80);
+  --panel-solid:#0b1020;
+  --line:rgba(150,180,255,.16);
+  --fg:#e9eefb;
+  --mute:#8f9cb9;
+  --accent:#ffb454;        /* solar amber: primary actions */
+  --accent-ink:#1a1204;
+  --cool:#7fb4ff;          /* orbit / selection blue */
+  --good:#6fd6a3;
+  --font-display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --font-body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--font-body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+#app{position:relative;height:100%;width:100%;overflow:hidden}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;white-space:nowrap;font-size:11px;letter-spacing:.02em;color:rgba(233,238,251,.86);text-shadow:0 0 4px #000,0 0 8px #000;will-change:transform;display:none}
+.lbl span{display:block;transform:translate(10px,-50%)}
+.lbl.star span{font-weight:600;color:#fff}
+.lbl.moon span{font-size:10px;color:rgba(190,205,235,.7)}
+.lbl.region span{text-transform:uppercase;letter-spacing:.12em;font-size:10px;color:rgba(160,190,255,.8)}
+.lbl.ring span{font-size:10px;color:rgba(150,180,255,.5);transform:translate(4px,-120%)}
+.lbl.sel span{color:var(--accent)}
+#reticle{position:absolute;left:0;top:0;width:10px;height:10px;border:1.5px solid var(--accent);border-radius:50%;pointer-events:none;display:none;box-shadow:0 0 10px rgba(255,180,84,.5)}
+
+/* top bar */
+#top{position:absolute;left:0;right:0;top:0;padding:10px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#top>*{pointer-events:auto}
+.row{display:flex;align-items:center;gap:8px;min-width:0}
+.brand{font:700 15px/1 var(--font-display);letter-spacing:.01em;display:flex;align-items:center;gap:8px;margin-right:auto;min-width:0;white-space:nowrap}
+.brand i{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff,var(--accent) 45%,#c2601a);box-shadow:0 0 12px var(--accent)}
+.ibtn{height:36px;min-width:36px;padding:0 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--fg)}
+.ibtn:hover{border-color:rgba(150,180,255,.4)}
+.ibtn[aria-pressed="true"]{border-color:var(--cool);color:var(--cool)}
+.ibtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#tabs{display:flex;gap:2px;padding:3px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);align-self:flex-start;max-width:100%;overflow-x:auto;scrollbar-width:none}
+#tabs::-webkit-scrollbar{display:none}
+#tabs button{border:0;background:none;padding:7px 12px;border-radius:9px;color:var(--mute);white-space:nowrap;font-weight:500;font-size:13px}
+#tabs button[aria-selected="true"]{background:rgba(127,180,255,.16);color:#fff}
+#tabs small{display:block;font-size:10px;color:var(--mute);margin-top:-1px;font-weight:400}
+
+/* menu */
+#menu{position:absolute;right:max(16px,env(safe-area-inset-right,0px));top:54px;width:min(280px,calc(100% - 32px));background:var(--panel-solid);border:1px solid var(--line);border-radius:14px;padding:10px 12px;z-index:5;box-shadow:0 18px 50px rgba(0,0,0,.6)}
+#menu h3{margin:2px 0 8px;font:600 11px var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+#menu label{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+#menu label:first-of-type{border-top:0}
+#menu input[type=checkbox]{appearance:none;width:34px;height:20px;border-radius:20px;background:#27304a;position:relative;flex:none;cursor:pointer;transition:background .15s}
+#menu input[type=checkbox]::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#cdd6ee;transition:transform .15s}
+#menu input[type=checkbox]:checked{background:var(--cool)}
+#menu input[type=checkbox]:checked::after{transform:translateX(14px);background:#fff}
+#menu small{color:var(--mute);display:block;font-size:11px}
+
+/* bottom stack */
+#bottom{position:absolute;left:0;right:0;bottom:0;padding:0 max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:flex-start}
+#bottom>*{pointer-events:auto}
+#timebar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);width:100%;max-width:520px}
+#timebar .date{font:500 12px var(--font-body);font-variant-numeric:tabular-nums;min-width:86px;text-align:right;color:var(--fg)}
+#timebar .rate{font:500 11px var(--font-body);color:var(--mute);min-width:62px;font-variant-numeric:tabular-nums}
+#speed{flex:1;min-width:60px;accent-color:var(--cool)}
+#info{width:100%;max-width:520px;max-height:44vh;overflow:auto;border-radius:16px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);padding:12px 14px 14px;overscroll-behavior:contain}
+#info .kind{font:600 10.5px var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--cool)}
+#info h2{margin:2px 0 0;font:700 22px/1.15 var(--font-display);letter-spacing:-.01em;text-wrap:balance}
+#info .sub{margin:2px 0 0;color:var(--mute);font-size:12.5px}
+#info .head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+#info .head>div{min-width:0}
+#info .fold{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:none;color:var(--mute)}
+#info dl{margin:10px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px 14px}
+#info dl div{min-width:0}
+#info dt{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+#info dd{margin:0;font-variant-numeric:tabular-nums;font-weight:500;overflow-wrap:anywhere}
+#info p.desc{margin:10px 0 0;color:#c9d3ea;max-width:65ch}
+#info .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+#info.min dl,#info.min p.desc{display:none}
+#info.min .acts{margin-top:10px}
+.btn{height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:rgba(127,180,255,.1);color:var(--fg);font-weight:500}
+.btn:hover{border-color:rgba(150,180,255,.45)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);font:500 10.5px var(--font-body);color:var(--mute);letter-spacing:.02em;text-transform:none;vertical-align:middle}
+.tag.good{color:var(--good);border-color:rgba(111,214,163,.4)}
+
+/* browse drawer */
+#browse{position:absolute;top:0;bottom:0;right:0;width:min(380px,100%);background:var(--panel-solid);border-left:1px solid var(--line);z-index:6;display:flex;flex-direction:column;padding:12px max(16px,env(safe-area-inset-right,0px)) 12px 12px;box-shadow:-18px 0 50px rgba(0,0,0,.5)}
+#browse .bar{display:flex;gap:8px;margin-bottom:8px}
+#q{flex:1;min-width:0;height:38px;border-radius:10px;border:1px solid var(--line);background:#0e1426;padding:0 12px;outline:none}
+#q:focus{border-color:var(--cool)}
+#results{flex:1;overflow:auto;margin:0;padding:0;list-style:none;overscroll-behavior:contain}
+#results h4{margin:14px 0 4px;font:600 10.5px var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+#results button{width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:8px 8px;display:flex;justify-content:space-between;gap:10px}
+#results button:hover,#results button:focus-visible{background:rgba(127,180,255,.1)}
+#results .nm{font-weight:500;min-width:0;overflow-wrap:anywhere}
+#results .mt{color:var(--mute);font-size:12px;white-space:nowrap}
+
+#fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .25s;z-index:4}
+#fade.on{opacity:1}
+#hint{position:absolute;left:50%;top:104px;transform:translateX(-50%);padding:7px 14px;border-radius:99px;background:var(--panel);border:1px solid var(--line);color:var(--mute);font-size:12px;pointer-events:none;transition:opacity .6s;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
+#hint.off{opacity:0}
+#err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--mute);z-index:9}
+#loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--mute);font-size:13px;letter-spacing:.1em;text-transform:uppercase;z-index:3}
+#tabSystem{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:460px){#tabs button{padding:7px 8px;font-size:12.5px}#info{max-height:38vh}#info h2{font-size:19px}}
+@media (min-width:820px){
+  #bottom{flex-direction:column-reverse}
+  #hint{top:60px}
+}
+@media (prefers-reduced-motion:reduce){#fade,#hint{transition:none}}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <canvas id="gl" aria-label="3D galaxy view"></canvas>
+  <div id="labels"></div>
+  <div id="reticle"></div>
+
+  <header id="top">
+    <div class="row">
+      <div class="brand"><i></i>Galaxy System Explorer</div>
+      <button class="ibtn" id="btnUp" title="Zoom out one level" aria-label="Zoom out one level"><svg viewBox="0 0 24 24"><path d="M4 14v6h6M20 10V4h-6M4 20l7-7M20 4l-7 7"/></svg></button>
+      <button class="ibtn" id="btnSearch" title="Search and browse" aria-label="Search and browse"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
+      <button class="ibtn" id="btnMenu" title="Display options" aria-label="Display options" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
+    </div>
+    <nav id="tabs" role="tablist" aria-label="Scale">
+      <button role="tab" data-level="group">Local Group</button>
+      <button role="tab" data-level="galaxy">Milky Way</button>
+      <button role="tab" data-level="near">Neighborhood</button>
+      <button role="tab" data-level="system" id="tabSystem">Solar System</button>
+    </nav>
+  </header>
+
+  <section id="menu" hidden aria-label="Display options">
+    <h3>Display</h3>
+    <label>Orbit lines <input type="checkbox" id="o_orbits" checked></label>
+    <label>Labels <input type="checkbox" id="o_labels" checked></label>
+    <label>Moons <input type="checkbox" id="o_moons" checked></label>
+    <label>Belts and debris <input type="checkbox" id="o_belts" checked></label>
+    <label><span>Habitable zone<small>Where liquid water could last on a rocky surface</small></span> <input type="checkbox" id="o_hz" checked></label>
+    <label><span>True-scale sizes<small>Real body sizes against real distances</small></span> <input type="checkbox" id="o_true"></label>
+    <label><span>Galaxy rotation<small>Slow spin of the Milky Way disc</small></span> <input type="checkbox" id="o_rotate" checked></label>
+    <label>Distance grid <input type="checkbox" id="o_grid" checked></label>
+    <label>Background stars <input type="checkbox" id="o_sky" checked></label>
+  </section>
+
+  <div id="bottom">
+    <div id="timebar" hidden>
+      <button class="ibtn" id="btnPlay" aria-label="Pause" title="Play / pause"><svg viewBox="0 0 24 24" id="icoPlay"><path d="M8 5v14M16 5v14"/></svg></button>
+      <button class="ibtn" id="btnRev" aria-label="Reverse time" title="Reverse time" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg></button>
+      <input type="range" id="speed" min="0" max="100" step="1" aria-label="Time speed">
+      <span class="rate" id="rate"></span>
+      <button class="ibtn" id="btnNow" title="Jump to today's planet positions" style="font-size:12px">Today</button>
+      <span class="date" id="date"></span>
+    </div>
+    <div id="info"></div>
+  </div>
+
+  <aside id="browse" hidden aria-label="Search and browse">
+    <div class="bar"><input id="q" type="search" placeholder="Search planets, moons, stars, galaxies" autocomplete="off" aria-label="Search"><button class="ibtn" id="btnCloseBrowse" aria-label="Close search">✕</button></div>
+    <ul id="results"></ul>
+  </aside>
+
+  <div id="loading">Loading universe…</div>
+  <div id="hint">Drag to orbit · pinch or scroll to zoom · tap an object</div>
+  <div id="err"><div><b>WebGL is unavailable.</b><br>This explorer needs a browser with WebGL enabled.</div></div>
+  <div id="fade"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   DATA
+   Orbital elements for the eight planets and Pluto are the JPL
+   "Keplerian elements for approximate positions" (J2000, valid 1800-2050).
+   Exoplanet values are rounded from published discovery papers; where a
+   radius is not measured it is estimated from mass and flagged "est.".
+   ===================================================================== */
+const RE_KM = 6371;
+
+// moons: a = semi-major axis (km), P = period (days), R = radius (km), inc = orbital-plane tilt to the ecliptic (deg)
+const MOONS = {
+  Earth: { inc: 5.1, list: [
+    { n:'Moon', a:384400, P:27.32, R:1737.4, tex:'moon', desc:'The only place beyond Earth that people have walked. Tidally locked, it always shows the same face and drifts away from Earth by about 3.8 cm a year.' } ]},
+  Mars: { inc: 25, list: [
+    { n:'Phobos', a:9376, P:0.319, R:11.1, tex:'dark', desc:'A lumpy, crater-scarred moon that circles Mars in under eight hours, faster than Mars itself turns. It is slowly spiralling inward.' },
+    { n:'Deimos', a:23463, P:1.263, R:6.2, tex:'dark', desc:'The smaller and more distant of Mars’s two moons, smooth with a thick coat of dust.' } ]},
+  Jupiter: { inc: 3, list: [
+    { n:'Io', a:421800, P:1.769, R:1821.6, tex:'io', desc:'The most volcanically active world known, with hundreds of volcanoes flexed by Jupiter’s tides.' },
+    { n:'Europa', a:671100, P:3.551, R:1560.8, tex:'europa', desc:'An ice shell covers a global salt-water ocean holding roughly twice the water of all Earth’s seas.' },
+    { n:'Ganymede', a:1070400, P:7.155, R:2634.1, tex:'ganymede', desc:'The largest moon in the Solar System, bigger than Mercury, and the only moon with its own magnetic field.' },
+    { n:'Callisto', a:1882700, P:16.69, R:2410.3, tex:'callisto', desc:'The most heavily cratered surface known. Its ancient ice has barely changed in four billion years.' } ]},
+  Saturn: { inc: 26.7, list: [
+    { n:'Mimas', a:185540, P:0.942, R:198.2, tex:'icegrey', desc:'Its giant Herschel crater gives it a passing resemblance to the Death Star.' },
+    { n:'Enceladus', a:238040, P:1.370, R:252.1, tex:'ice', desc:'Geysers at its south pole spray ocean water into space and feed Saturn’s E ring.' },
+    { n:'Tethys', a:294670, P:1.888, R:531.1, tex:'ice', desc:'Almost pure water ice, split by a 2,000 km long canyon called Ithaca Chasma.' },
+    { n:'Dione', a:377420, P:2.737, R:561.4, tex:'icegrey', desc:'An icy moon with bright wispy cliffs and a thin oxygen exosphere.' },
+    { n:'Rhea', a:527070, P:4.518, R:763.8, tex:'icegrey', desc:'Saturn’s second-largest moon, a heavily cratered ball of ice and rock.' },
+    { n:'Titan', a:1221870, P:15.945, R:2574.7, tex:'titan', atmo:'#e0a050', desc:'Wrapped in a thick orange nitrogen atmosphere, with lakes and seas of liquid methane. The Dragonfly rotorcraft is due to fly there in the 2030s.' },
+    { n:'Iapetus', a:3560820, P:79.33, R:734.5, tex:'iapetus', desc:'Two-toned: one hemisphere is coal-dark, the other bright as snow. A ridge circles its equator.' } ]},
+  Uranus: { inc: 97.8, list: [
+    { n:'Miranda', a:129900, P:1.413, R:235.8, tex:'icegrey', desc:'A patchwork of canyons and terraced cliffs, with some of the tallest known cliffs in the Solar System.' },
+    { n:'Ariel', a:190900, P:2.520, R:578.9, tex:'icegrey', desc:'The brightest of Uranus’s moons, cut by long valleys.' },
+    { n:'Umbriel', a:266000, P:4.144, R:584.7, tex:'dark', desc:'A dark, old, cratered surface with one bright ring-shaped feature.' },
+    { n:'Titania', a:436300, P:8.706, R:788.4, tex:'icegrey', desc:'The largest moon of Uranus, with huge canyons.' },
+    { n:'Oberon', a:583500, P:13.46, R:761.4, tex:'dark', desc:'An outer moon with old, dark, heavily cratered terrain.' } ]},
+  Neptune: { inc: 157, list: [
+    { n:'Proteus', a:117647, P:1.122, R:210, tex:'dark', desc:'A dark, irregular moon, nearly as large as a body can be before gravity pulls it round.' },
+    { n:'Triton', a:354800, P:5.877, R:1353.4, tex:'triton', desc:'Orbits backwards, which shows it is a captured Kuiper Belt object. Nitrogen geysers erupt from its pink-tinged ice.' } ]},
+  Pluto: { inc: 119.6, list: [
+    { n:'Charon', a:19591, P:6.387, R:606, tex:'charon', desc:'Half the width of Pluto. The two bodies orbit a point in the space between them and keep the same faces toward each other.' } ]},
+};
+
+// kind: planet | dwarf. Elements: a (AU), e, i (deg), node (deg), varpi (deg), L (mean longitude at J2000, deg), P (years)
+const SOL_PLANETS = [
+ { n:'Mercury', kind:'planet', cls:'Terrestrial planet', a:0.38709927, e:0.20563593, i:7.00497902, node:48.33076593, varpi:77.45779628, L:252.25032350, P:0.24084,
+   Rkm:2439.7, mass:'0.055 Earths', rot:1407.6, tilt:0.03, g:'3.7 m/s²', temp:'−180 to 430 °C', moons:'0', tex:'mercury', col:'#a39a92',
+   desc:'The smallest planet and the closest to the Sun. With almost no atmosphere, its surface swings from scorching days to freezing nights. One solar day lasts two Mercury years.' },
+ { n:'Venus', kind:'planet', cls:'Terrestrial planet', a:0.72333566, e:0.00677672, i:3.39467605, node:76.67984255, varpi:131.60246718, L:181.97909950, P:0.61519,
+   Rkm:6051.8, mass:'0.815 Earths', rot:-5832.5, tilt:177.4, g:'8.87 m/s²', temp:'464 °C', moons:'0', tex:'venus', col:'#e3c98f', atmo:'#f3d9a0',
+   desc:'Almost Earth’s size but crushed under a carbon dioxide atmosphere 90 times denser than ours. The hottest planet, and it spins backwards so slowly that its day outlasts its year.' },
+ { n:'Earth', kind:'planet', cls:'Terrestrial planet', a:1.00000261, e:0.01671123, i:-0.00001531, node:0, varpi:102.93768193, L:100.46457166, P:1.00002,
+   Rkm:6371, mass:'1 Earth', rot:23.934, tilt:23.44, g:'9.81 m/s²', temp:'15 °C average', moons:'1', tex:'earth', col:'#3f78c2', atmo:'#6aa8ff', clouds:true,
+   desc:'The only world known to host life. Liquid water covers 71% of its surface, held in place by an atmosphere of nitrogen and oxygen.' },
+ { n:'Mars', kind:'planet', cls:'Terrestrial planet', a:1.52371034, e:0.09339410, i:1.84969142, node:49.55953891, varpi:-23.94362959, L:-4.55343205, P:1.88085,
+   Rkm:3389.5, mass:'0.107 Earths', rot:24.623, tilt:25.19, g:'3.71 m/s²', temp:'−63 °C average', moons:'2', tex:'mars', col:'#c0643a', atmo:'#d99a70',
+   desc:'A cold desert with the tallest volcano (Olympus Mons) and the deepest canyon system (Valles Marineris) known. Dry river valleys show that water once flowed here.' },
+ { n:'Jupiter', kind:'planet', cls:'Gas giant', a:5.20288700, e:0.04838624, i:1.30439695, node:100.47390909, varpi:14.72847983, L:34.39644051, P:11.8620,
+   Rkm:69911, mass:'317.8 Earths', rot:9.925, tilt:3.13, g:'24.8 m/s²', temp:'−108 °C (cloud tops)', moons:'95+ known', tex:'jupiter', col:'#d2b08a', atmo:'#e8d2b0',
+   desc:'More than twice as massive as all other planets combined. Its Great Red Spot is a storm wider than Earth that has raged for at least 190 years.' },
+ { n:'Saturn', kind:'planet', cls:'Gas giant', a:9.53667594, e:0.05386179, i:2.48599187, node:113.66242448, varpi:92.59887831, L:49.95424423, P:29.4571,
+   Rkm:58232, mass:'95.2 Earths', rot:10.656, tilt:26.73, g:'10.4 m/s²', temp:'−139 °C (cloud tops)', moons:'145+ known', tex:'saturn', col:'#e3d3a3', atmo:'#eadcb4', rings:'saturn',
+   desc:'Less dense than water. Its ring system spans 280,000 km yet is mostly only about ten metres thick, made of ice particles from dust grains to house-sized blocks.' },
+ { n:'Uranus', kind:'planet', cls:'Ice giant', a:19.18916464, e:0.04725744, i:0.77263783, node:74.01692503, varpi:170.95427630, L:313.23810451, P:84.0205,
+   Rkm:25362, mass:'14.5 Earths', rot:-17.24, tilt:97.77, g:'8.69 m/s²', temp:'−197 °C (cloud tops)', moons:'28 known', tex:'uranus', col:'#a6dde3', atmo:'#bdeef2', rings:'uranus',
+   desc:'Tipped on its side, it rolls around the Sun with each pole facing the Sun for 42 years at a time. Methane in its atmosphere gives it a pale cyan tint.' },
+ { n:'Neptune', kind:'planet', cls:'Ice giant', a:30.06992276, e:0.00859048, i:1.77004347, node:131.78422574, varpi:44.96476227, L:-55.12002969, P:164.801,
+   Rkm:24622, mass:'17.1 Earths', rot:16.11, tilt:28.32, g:'11.2 m/s²', temp:'−201 °C (cloud tops)', moons:'16+ known', tex:'neptune', col:'#4468d8', atmo:'#6f90ff',
+   desc:'The windiest planet, with gusts above 2,000 km/h. Found in 1846 by calculation before anyone saw it, from small tugs on Uranus’s orbit.' },
+ { n:'Ceres', kind:'dwarf', cls:'Dwarf planet · asteroid belt', a:2.7675, e:0.0758, i:10.594, node:80.31, varpi:153.9, L:249.9, P:4.604,
+   Rkm:469.7, mass:'0.00016 Earths', rot:9.074, tilt:4, g:'0.28 m/s²', temp:'−105 °C', moons:'0', tex:'ceres', col:'#8b8a86',
+   desc:'The largest object in the asteroid belt and the first dwarf planet visited by a spacecraft (Dawn, 2015). Bright salt deposits in Occator crater come from briny water below the surface.' },
+ { n:'Pluto', kind:'dwarf', cls:'Dwarf planet · Kuiper Belt', a:39.48211675, e:0.24882730, i:17.14001206, node:110.30393684, varpi:224.06891629, L:238.92903833, P:247.94,
+   Rkm:1188.3, mass:'0.0022 Earths', rot:-153.29, tilt:122.5, g:'0.62 m/s²', temp:'−230 °C', moons:'5', tex:'pluto', col:'#c9b199', atmo:'#9bb0d8',
+   desc:'Visited by New Horizons in 2015, which found a heart-shaped nitrogen-ice plain, water-ice mountains and a hazy blue sky. Its orbit is tilted 17° and crosses inside Neptune’s.' },
+ { n:'Eris', kind:'dwarf', cls:'Dwarf planet · scattered disc', a:67.78, e:0.4407, i:44.04, node:35.95, varpi:187.5, L:204.0, P:558,
+   Rkm:1163, mass:'0.0028 Earths', rot:25.9, tilt:0, g:'0.82 m/s²', temp:'−231 °C', moons:'1', tex:'eris', col:'#e6e4e0', approx:true,
+   desc:'About as wide as Pluto but 27% more massive. Its discovery in 2005 led to the 2006 redefinition of “planet”. Currently near its farthest point, about 96 AU out. Orbit shown is approximate.' },
+];
+
+/* -------- star systems. Positions: RA in decimal hours, Dec in degrees, d in light-years. -------- */
+// planets for exoplanet systems: a (AU), P (days), R (Earth radii), e optional, est = radius is estimated, cand = unconfirmed
+const STARS = [
+ { id:'sol', n:'Sun (Sol)', sys:'Solar System', cls:'G2V', d:0, ra:0, dec:0, T:5772, R:1, M:1, L:1, age:'4.6 billion yr', plan:'sol', speed:20, start:1700,
+   desc:'The star at the centre of our system holds 99.86% of its mass. Eight planets, five dwarf planets, and hundreds of moons orbit it, along with the asteroid belt and the Kuiper Belt.' },
+ { id:'proxima', n:'Proxima Centauri', cls:'M5.5Ve', d:4.246, ra:14.495, dec:-62.68, T:3042, R:0.154, M:0.122, L:0.0017, age:'~4.85 billion yr', speed:0.4,
+   desc:'The closest star to the Sun. A dim red dwarf too faint to see without a telescope, it flares often. A rocky planet sits in its habitable zone.',
+   planets:[ {n:'Proxima d', a:0.0289, P:5.122, R:0.81, est:1, note:'Minimum mass about 0.26 Earths'}, {n:'Proxima b', a:0.0485, P:11.186, R:1.07, est:1, note:'Minimum mass about 1.07 Earths; in the habitable zone'} ] },
+ { id:'alphacen', n:'Alpha Centauri A and B', cls:'G2V + K1V', d:4.37, ra:14.66, dec:-60.83, T:5790, R:1.22, M:1.1, L:1.52, age:'~5 billion yr', speed:400,
+   comp:[ {n:'Alpha Centauri A', cls:'G2V', T:5790, R:1.22, M:1.1, L:1.52}, {n:'Alpha Centauri B', cls:'K1V', T:5260, R:0.86, M:0.91, L:0.5} ], orbit:{a:23.4, e:0.518, P:79.9},
+   desc:'A pair of Sun-like stars that swing around each other every 80 years, from about as far apart as the Sun and Saturn to as far as the Sun and Neptune. Proxima is a third, distant member. A giant-planet candidate around A was reported by JWST in 2025.' },
+ { id:'barnard', n:'Barnard’s Star', cls:'M4V', d:5.96, ra:17.963, dec:4.69, T:3278, R:0.196, M:0.144, L:0.0034, age:'7–10 billion yr', speed:0.4,
+   desc:'The fastest-moving star across our sky, covering the width of the full Moon every 180 years. An old, quiet red dwarf with at least one small close-in planet.',
+   planets:[ {n:'Barnard b', a:0.0229, P:3.15, R:0.7, est:1, note:'Minimum mass about 0.37 Earths. More candidates have been reported.'} ] },
+ { id:'wolf359', n:'Wolf 359', cls:'M6Ve', d:7.86, ra:10.942, dec:7.01, T:2749, R:0.144, M:0.11, L:0.0011, age:'< 1 billion yr', speed:1, desc:'A faint, young, flaring red dwarf in Leo, so dim it would need a telescope even from a few light-years away.' },
+ { id:'lalande', n:'Lalande 21185', cls:'M2V', d:8.31, ra:11.055, dec:35.97, T:3601, R:0.39, M:0.39, L:0.026, age:'~8 billion yr', speed:1, desc:'The brightest red dwarf in northern skies, visible in binoculars.',
+   planets:[ {n:'Lalande 21185 b', a:0.0789, P:12.95, R:1.4, est:1, note:'Minimum mass about 2.7 Earths'} ] },
+ { id:'sirius', n:'Sirius A and B', cls:'A1V + DA2', d:8.6, ra:6.752, dec:-16.72, T:9940, R:1.711, M:2.06, L:25.4, age:'~240 million yr', speed:300,
+   comp:[ {n:'Sirius A', cls:'A1V', T:9940, R:1.711, M:2.06, L:25.4}, {n:'Sirius B', cls:'DA2 white dwarf', T:25200, R:0.0084, M:1.02, L:0.056} ], orbit:{a:20.0, e:0.59, P:50.1},
+   desc:'The brightest star in Earth’s night sky. Its companion, Sirius B, is a white dwarf with the mass of the Sun packed into a ball the size of Earth.' },
+ { id:'luyten726', n:'Luyten 726-8 (UV Ceti)', cls:'M5.5Ve + M6Ve', d:8.73, ra:1.65, dec:-17.95, T:2670, R:0.16, M:0.1, L:0.0006, age:'~1 billion yr', speed:1, desc:'Two nearly identical red dwarfs. UV Ceti gave its name to a whole class of violently flaring stars.' },
+ { id:'ross154', n:'Ross 154', cls:'M3.5Ve', d:9.69, ra:18.83, dec:-23.84, T:3340, R:0.24, M:0.17, L:0.0038, age:'< 1 billion yr', speed:1, desc:'A young flare star in Sagittarius.' },
+ { id:'ross248', n:'Ross 248', cls:'M5.5V', d:10.3, ra:23.698, dec:44.18, T:2800, R:0.16, M:0.136, L:0.0018, age:'~3 billion yr', speed:1, desc:'In about 36,000 years this red dwarf will pass closer to the Sun than any other star, at roughly 3 light-years.' },
+ { id:'epseri', n:'Epsilon Eridani', cls:'K2V', d:10.47, ra:3.548, dec:-9.46, T:5084, R:0.735, M:0.82, L:0.34, age:'~600 million yr', speed:60, start:6500,
+   belts:[ {n:'Inner asteroid belt', in:2.0, out:3.0, cnt:2500, col:'#b9a98f'}, {n:'Outer debris belt', in:15, out:25, cnt:3500, col:'#9fb5d9'} ],
+   planets:[ {n:'Epsilon Eridani b', a:3.48, P:2690, R:11.2, e:0.07, est:1, note:'About 0.65 Jupiter masses. Radius assumed Jupiter-like.'} ],
+   desc:'A young, active, Sun-like orange star visible to the naked eye, with a Jupiter-like planet and two belts of debris, a younger picture of how our own system might have looked.' },
+ { id:'lacaille9352', n:'Lacaille 9352', cls:'M0.5V', d:10.72, ra:23.098, dec:-35.85, T:3688, R:0.47, M:0.49, L:0.036, age:'~6 billion yr', speed:2,
+   planets:[ {n:'Lacaille 9352 b', a:0.068, P:9.26, R:1.5, est:1, note:'Minimum mass about 4.2 Earths'}, {n:'Lacaille 9352 c', a:0.12, P:21.8, R:1.5, est:1, note:'Minimum mass about 7.6 Earths'} ], desc:'A quiet red dwarf in Piscis Austrinus hosting two super-Earth candidates.' },
+ { id:'ross128', n:'Ross 128', cls:'M4V', d:11.0, ra:11.795, dec:0.8, T:3192, R:0.197, M:0.168, L:0.0036, age:'~9.5 billion yr', speed:1,
+   planets:[ {n:'Ross 128 b', a:0.0496, P:9.866, R:1.1, est:1, note:'Minimum mass about 1.4 Earths'} ], desc:'A quiet, old red dwarf, and one of the closest stars with a temperate Earth-mass planet candidate.' },
+ { id:'procyon', n:'Procyon A and B', cls:'F5IV-V + DQZ', d:11.46, ra:7.655, dec:5.22, T:6530, R:2.05, M:1.5, L:6.9, age:'~2 billion yr', speed:250,
+   comp:[ {n:'Procyon A', cls:'F5IV-V', T:6530, R:2.05, M:1.5, L:6.9}, {n:'Procyon B', cls:'DQZ white dwarf', T:7740, R:0.0123, M:0.6, L:0.0005} ], orbit:{a:15.0, e:0.41, P:40.8},
+   desc:'The eighth-brightest star in the sky, with a white-dwarf companion that was found from its pull on Procyon A decades before anyone saw it.' },
+ { id:'61cyg', n:'61 Cygni A and B', cls:'K5V + K7V', d:11.4, ra:21.115, dec:38.75, T:4374, R:0.665, M:0.7, L:0.153, age:'~6 billion yr', speed:3000,
+   comp:[ {n:'61 Cygni A', cls:'K5V', T:4374, R:0.665, M:0.7, L:0.153}, {n:'61 Cygni B', cls:'K7V', T:4044, R:0.595, M:0.63, L:0.085} ], orbit:{a:84, e:0.49, P:678},
+   desc:'In 1838 Friedrich Bessel measured its parallax, the first reliable distance to any star other than the Sun.' },
+ { id:'struve2398', n:'Struve 2398', cls:'M3V + M3.5V', d:11.5, ra:18.713, dec:59.63, T:3340, R:0.35, M:0.35, L:0.003, age:'unknown', speed:1, desc:'A close pair of red dwarfs in Draco.' },
+ { id:'gl15', n:'Groombridge 34', cls:'M1.5V + M3.5V', d:11.6, ra:0.307, dec:44.02, T:3603, R:0.38, M:0.38, L:0.0065, age:'~4 billion yr', speed:2,
+   planets:[ {n:'Gliese 15 A b', a:0.0717, P:11.44, R:1.5, est:1, note:'Minimum mass about 3 Earths'} ], desc:'A red-dwarf pair in Andromeda. The primary hosts a super-Earth.' },
+ { id:'dxcnc', n:'DX Cancri', cls:'M6.5Ve', d:11.7, ra:8.497, dec:26.78, T:2840, R:0.11, M:0.09, L:0.0003, age:'~1 billion yr', speed:1, desc:'A very faint flaring red dwarf close to the stellar mass limit.' },
+ { id:'tauceti', n:'Tau Ceti', cls:'G8.5V', d:11.9, ra:1.735, dec:-15.94, T:5344, R:0.793, M:0.783, L:0.488, age:'5.8 billion yr', speed:12, start:350,
+   belts:[ {n:'Debris disc', in:6, out:50, cnt:3500, col:'#9fb5d9'} ],
+   planets:[ {n:'Tau Ceti g', a:0.133, P:20.0, R:1.2, est:1, cand:1, note:'Candidate. Minimum mass about 1.75 Earths'}, {n:'Tau Ceti h', a:0.243, P:49.4, R:1.2, est:1, cand:1, note:'Candidate. Minimum mass about 1.8 Earths'}, {n:'Tau Ceti e', a:0.538, P:162.9, R:1.6, est:1, cand:1, note:'Candidate. Minimum mass about 3.9 Earths; inner edge of the habitable zone'}, {n:'Tau Ceti f', a:1.334, P:636, R:1.6, est:1, cand:1, note:'Candidate. Minimum mass about 3.9 Earths; outer edge of the habitable zone'} ],
+   desc:'A near-twin of the Sun, with about 80% of its mass and a debris disc much denser than our Kuiper Belt. Its planets are candidates found in tiny wobbles of the star’s velocity.' },
+ { id:'epsind', n:'Epsilon Indi A', cls:'K5V', d:11.87, ra:22.057, dec:-56.79, T:4630, R:0.73, M:0.76, L:0.22, age:'~3.5 billion yr', speed:1, desc:'An orange dwarf with two brown dwarfs in orbit far outside, and a giant planet imaged by JWST in 2024.' },
+ { id:'yzceti', n:'YZ Ceti', cls:'M4.5V', d:12.1, ra:1.208, dec:-16.99, T:3056, R:0.17, M:0.13, L:0.0022, age:'~5 billion yr', speed:0.3,
+   planets:[ {n:'YZ Ceti b', a:0.0156, P:1.974, R:0.9, est:1, note:'Minimum mass about 0.7 Earths'}, {n:'YZ Ceti c', a:0.021, P:3.06, R:1.0, est:1, note:'Minimum mass about 1.1 Earths'}, {n:'YZ Ceti d', a:0.0283, P:4.656, R:1.0, est:1, note:'Minimum mass about 1.1 Earths'} ],
+   desc:'A red dwarf with three tightly packed Earth-mass planets. Radio signals suggest the star and its inner planet interact magnetically.' },
+ { id:'luyten', n:'Luyten’s Star', cls:'M3.5V', d:12.35, ra:7.457, dec:5.23, T:3382, R:0.29, M:0.29, L:0.0088, age:'~8 billion yr', speed:1,
+   planets:[ {n:'Luyten’s Star c', a:0.0363, P:4.723, R:1.0, est:1, note:'Minimum mass about 1.2 Earths'}, {n:'Luyten’s Star b', a:0.0911, P:18.65, R:1.5, est:1, note:'Minimum mass about 2.9 Earths; in the habitable zone'} ], desc:'A quiet red dwarf in Canis Minor with a super-Earth in its habitable zone.' },
+ { id:'teegarden', n:'Teegarden’s Star', cls:'M7V', d:12.5, ra:2.883, dec:16.88, T:2904, R:0.107, M:0.09, L:0.00073, age:'~8 billion yr', speed:0.5,
+   planets:[ {n:'Teegarden b', a:0.0259, P:4.91, R:1.0, est:1, note:'Minimum mass about 1.05 Earths'}, {n:'Teegarden c', a:0.0455, P:11.41, R:1.0, est:1, note:'Minimum mass about 1.1 Earths'}, {n:'Teegarden d', a:0.0791, P:26.13, R:0.9, est:1, cand:1, note:'Candidate. Minimum mass about 0.8 Earths'} ],
+   desc:'A small red dwarf, found only in 2003 because it is so dim. Two of its planets are among the most Earth-like known by mass.' },
+ { id:'kapteyn', n:'Kapteyn’s Star', cls:'sdM1', d:12.83, ra:5.195, dec:-45.02, T:3550, R:0.29, M:0.28, L:0.012, age:'~11 billion yr', speed:1, desc:'An ancient halo star moving against the galactic flow, probably the remains of a dwarf galaxy swallowed by the Milky Way.' },
+ { id:'axmic', n:'Lacaille 8760 (AX Mic)', cls:'M0V', d:12.9, ra:21.288, dec:-38.87, T:3800, R:0.51, M:0.6, L:0.072, age:'~5 billion yr', speed:1, desc:'One of the brightest red dwarfs in the sky.' },
+ { id:'kruger60', n:'Kruger 60', cls:'M3V + M4V', d:13.15, ra:22.467, dec:57.7, T:3180, R:0.35, M:0.27, L:0.0057, age:'~1.5 billion yr', speed:1, desc:'A close pair of red dwarfs in Cepheus.' },
+ { id:'wolf1061', n:'Wolf 1061', cls:'M3V', d:14.05, ra:16.505, dec:-12.66, T:3342, R:0.31, M:0.29, L:0.0044, age:'> 7 billion yr', speed:3,
+   planets:[ {n:'Wolf 1061 b', a:0.0375, P:4.887, R:1.2, est:1, note:'Minimum mass about 1.4 Earths'}, {n:'Wolf 1061 c', a:0.089, P:17.87, R:1.6, est:1, note:'Minimum mass about 3.4 Earths; in the habitable zone'}, {n:'Wolf 1061 d', a:0.47, P:217, R:1.8, est:1, note:'Minimum mass about 5.2 Earths'} ],
+   desc:'A red dwarf in Ophiuchus with three planets, the middle one in the habitable zone.' },
+ { id:'gl876', n:'Gliese 876', cls:'M4V', d:15.3, ra:22.888, dec:-14.26, T:3129, R:0.38, M:0.35, L:0.0124, age:'~2.5 billion yr', speed:6,
+   planets:[ {n:'Gliese 876 d', a:0.0208, P:1.938, R:1.5, est:1, note:'Minimum mass about 6.8 Earths'}, {n:'Gliese 876 c', a:0.1303, P:30.1, R:11.0, est:1, note:'About 0.7 Jupiter masses. Radius assumed.'}, {n:'Gliese 876 b', a:0.2081, P:61.1, R:11.5, est:1, note:'About 2.3 Jupiter masses. Radius assumed.'}, {n:'Gliese 876 e', a:0.334, P:124.3, R:4.0, est:1, note:'Minimum mass about 14.6 Earths'} ],
+   desc:'The first red dwarf found with planets. Its two giants are locked in a 2:1 orbital resonance, tugging on one another so strongly that the effect is measurable.' },
+ { id:'altair', n:'Altair', cls:'A7V', d:16.7, ra:19.847, dec:8.87, T:7550, R:1.79, M:1.86, L:10.6, age:'~100 million yr', speed:1, desc:'One of the vertices of the Summer Triangle. It spins once in under 9 hours, flattening it into a visible oval.' },
+ { id:'gl581', n:'Gliese 581', cls:'M3V', d:20.4, ra:15.323, dec:-7.72, T:3490, R:0.3, M:0.3, L:0.0118, age:'~8 billion yr', speed:3,
+   planets:[ {n:'Gliese 581 e', a:0.0284, P:3.149, R:1.3, est:1, note:'Minimum mass about 1.9 Earths'}, {n:'Gliese 581 b', a:0.0406, P:5.369, R:4.0, est:1, note:'Minimum mass about 16 Earths'}, {n:'Gliese 581 c', a:0.0721, P:12.92, R:2.0, est:1, note:'Minimum mass about 5.5 Earths'}, {n:'Gliese 581 d', a:0.2184, P:66.64, R:2.2, est:1, cand:1, note:'Disputed. Minimum mass about 7 Earths'} ],
+   desc:'In 2007 it hosted the first claimed habitable-zone exoplanet. Some of its planets are now thought to be signals from the star’s own activity.' },
+ { id:'gl667c', n:'Gliese 667 C', cls:'M1.5V', d:23.6, ra:17.315, dec:-34.99, T:3600, R:0.42, M:0.33, L:0.014, age:'2–7 billion yr', speed:3,
+   planets:[ {n:'Gliese 667 C b', a:0.0505, P:7.2, R:2.0, est:1, note:'Minimum mass about 5.6 Earths'}, {n:'Gliese 667 C c', a:0.1251, P:28.1, R:1.6, est:1, note:'Minimum mass about 3.8 Earths; in the habitable zone'} ],
+   desc:'The third member of a triple star system. From its planets the two other stars would look like a pair of bright suns in the sky.' },
+ { id:'vega', n:'Vega', cls:'A0V', d:25.0, ra:18.615, dec:38.78, T:9602, R:2.36, M:2.14, L:40.1, age:'~450 million yr', speed:1, desc:'The reference star for the magnitude scale, and the pole star around the year 13,700. A dusty debris disc surrounds it.' },
+ { id:'fomalhaut', n:'Fomalhaut', cls:'A3V', d:25.1, ra:22.962, dec:-29.62, T:8590, R:1.84, M:1.92, L:16.6, age:'~440 million yr', speed:2000, start:40000,
+   belts:[ {n:'Debris ring', in:133, out:158, cnt:4500, col:'#c9d2e8'} ], desc:'Surrounded by a huge, sharp-edged ring of dust and ice that was one of the first planetary-system structures to be imaged directly.' },
+ { id:'pollux', n:'Pollux', cls:'K0III', d:33.8, ra:7.755, dec:28.03, T:4666, R:8.8, M:1.91, L:43, age:'~700 million yr', speed:40, start:450,
+   planets:[ {n:'Pollux b (Thestias)', a:1.64, P:589.6, R:12, est:1, note:'Minimum mass about 2.3 Jupiter masses. Radius assumed.'} ], desc:'The closest giant star to the Sun, an orange giant that has already left the main sequence.' },
+ { id:'arcturus', n:'Arcturus', cls:'K1.5III', d:36.7, ra:14.262, dec:19.18, T:4286, R:25.4, M:1.08, L:170, age:'~7 billion yr', speed:1, desc:'The brightest star in the northern sky. An orange giant 25 times the Sun’s width, it moves with the halo, not the disc.' },
+ { id:'trappist1', n:'TRAPPIST-1', cls:'M8V', d:40.7, ra:23.108, dec:-5.04, T:2566, R:0.1192, M:0.0898, L:0.00055, age:'~7.6 billion yr', speed:0.5,
+   planets:[ {n:'TRAPPIST-1 b', a:0.01154, P:1.511, R:1.116, note:'Hot rocky world'}, {n:'TRAPPIST-1 c', a:0.01580, P:2.422, R:1.097}, {n:'TRAPPIST-1 d', a:0.02227, P:4.049, R:0.788, note:'Inner edge of the habitable zone'}, {n:'TRAPPIST-1 e', a:0.02925, P:6.099, R:0.920, note:'Habitable zone; rocky, Earth-like density'}, {n:'TRAPPIST-1 f', a:0.03849, P:9.206, R:1.045, note:'Habitable zone'}, {n:'TRAPPIST-1 g', a:0.04683, P:12.35, R:1.129, note:'Habitable zone'}, {n:'TRAPPIST-1 h', a:0.06189, P:18.77, R:0.755, note:'Cold, outermost known planet'} ],
+   desc:'An ultracool dwarf barely bigger than Jupiter, with seven Earth-sized planets, all of whose orbits would fit inside Mercury’s. Neighbouring planets lock into resonant chains. Seen from one planet, another would look larger than our Moon.' },
+ { id:'55cnc', n:'55 Cancri A', cls:'G8V', d:41.0, ra:8.877, dec:28.33, T:5196, R:0.94, M:0.9, L:0.59, age:'~10 billion yr', speed:12, start:900,
+   planets:[ {n:'55 Cancri e', a:0.01544, P:0.7365, R:1.88, note:'Lava world; the dayside may be molten'}, {n:'55 Cancri b', a:0.1134, P:14.65, R:9, est:1, note:'About 0.8 Jupiter masses. Radius assumed.'}, {n:'55 Cancri c', a:0.2373, P:44.4, R:5.5, est:1, note:'About 0.17 Jupiter masses'}, {n:'55 Cancri f', a:0.7708, P:260.7, R:5.5, est:1, note:'About 0.14 Jupiter masses'}, {n:'55 Cancri d', a:5.74, P:5574, R:11, est:1, e:0.13, note:'About 3.8 Jupiter masses. Radius assumed.'} ],
+   desc:'A Sun-like star with five known planets. The innermost, 55 Cancri e, orbits in 18 hours and was the first super-Earth whose atmosphere was probed.' },
+];
+
+/* -------- Milky Way landmarks. (l, b) are galactic coordinates in degrees, d in light-years. -------- */
+const GAL_SITES = [
+ { n:'Orion Nebula', l:209.0, b:-19.4, d:1344, t:'Star-forming nebula', desc:'The nearest large stellar nursery, visible to the naked eye as the fuzzy middle star of Orion’s sword.' },
+ { n:'Pleiades', l:166.6, b:-23.5, d:444, t:'Open cluster', desc:'About 1,000 young blue stars, only 100 million years old.' },
+ { n:'Betelgeuse', l:199.8, b:-9.0, d:550, t:'Red supergiant', desc:'A red supergiant near the end of its life that will one day explode as a supernova.' },
+ { n:'Crab Nebula', l:184.6, b:-5.8, d:6500, t:'Supernova remnant', desc:'The remains of a star seen exploding in 1054 CE, powered by a pulsar spinning 30 times a second.' },
+ { n:'Cygnus X-1', l:71.3, b:3.1, d:7200, t:'Black hole', desc:'One of the first black holes identified, about 21 times the Sun’s mass, feeding on a blue supergiant companion.' },
+ { n:'Eagle Nebula', l:17.0, b:0.8, d:7000, t:'Star-forming nebula', desc:'Home of the Pillars of Creation, towers of gas and dust where stars are forming.' },
+ { n:'Eta Carinae', l:287.6, b:-0.6, d:7500, t:'Hypergiant binary', desc:'A massive, unstable star system that erupted in the 1840s and could explode soon, in cosmic terms.' },
+ { n:'Westerlund 1', l:339.6, b:-0.4, d:12000, t:'Super star cluster', desc:'The most massive young star cluster known in the Milky Way, packed with supergiants.' },
+ { n:'Omega Centauri', l:309.1, b:15.0, d:17090, t:'Globular cluster', desc:'The largest globular cluster in the Milky Way, with ten million stars. It is probably the stripped core of an absorbed dwarf galaxy.' },
+];
+const ARMS = [
+ { n:'Sagittarius Arm', j:0, r:290, desc:'The next arm inward from the Sun, rich in nebulae such as the Lagoon and the Eagle.' },
+ { n:'Perseus Arm', j:1, r:365, desc:'One of the two major arms in the outer galaxy, about 6,400 light-years beyond the Sun.' },
+ { n:'Scutum–Centaurus Arm', j:-1, r:145, desc:'A major inner arm, among the most densely populated with young stars.' },
+ { n:'Norma–Outer Arm', j:2, r:410, desc:'The outer arm, thinner and with more gas than stars, which ends in a warp of the disc.' },
+];
+
+/* -------- Local Group. d in thousand light-years, equatorial coordinates. -------- */
+const LOCAL = [
+ { n:'Milky Way', t:'Barred spiral galaxy', d:0, ra:0, dec:0, size:105, enter:1, stars:'200–400 billion', desc:'Our home galaxy. Its disc is about 105,000 light-years across, and it holds between 200 and 400 billion stars. Tap Enter to explore it.' },
+ { n:'Large Magellanic Cloud', t:'Satellite irregular galaxy', d:163, ra:5.392, dec:-69.75, size:14, stars:'~30 billion', desc:'The largest of the Milky Way’s satellites. Supernova 1987A exploded here.' },
+ { n:'Small Magellanic Cloud', t:'Satellite dwarf galaxy', d:200, ra:0.88, dec:-72.8, size:7, stars:'~3 billion', desc:'A dwarf galaxy being pulled apart by the Milky Way and the LMC.' },
+ { n:'Sagittarius Dwarf', t:'Satellite dwarf galaxy', d:70, ra:18.92, dec:-30.5, size:10, stars:'~50 million', desc:'The nearest satellite galaxy. It is being shredded as it passes through the Milky Way’s disc.' },
+ { n:'Draco Dwarf', t:'Satellite dwarf galaxy', d:254, ra:17.34, dec:57.9, size:3, desc:'A faint, dark-matter-dominated dwarf spheroidal.' },
+ { n:'Ursa Minor Dwarf', t:'Satellite dwarf galaxy', d:206, ra:15.15, dec:67.2, size:3, desc:'A faint dwarf spheroidal satellite.' },
+ { n:'Sculptor Dwarf', t:'Satellite dwarf galaxy', d:290, ra:1.0, dec:-33.7, size:3, desc:'A faint dwarf spheroidal satellite.' },
+ { n:'Carina Dwarf', t:'Satellite dwarf galaxy', d:330, ra:6.68, dec:-50.97, size:2, desc:'A faint dwarf spheroidal satellite.' },
+ { n:'Fornax Dwarf', t:'Satellite dwarf galaxy', d:460, ra:2.67, dec:-34.45, size:6, desc:'A dwarf spheroidal with six globular clusters of its own.' },
+ { n:'Leo I', t:'Satellite dwarf galaxy', d:820, ra:10.14, dec:12.3, size:2, desc:'One of the most distant Milky Way satellites.' },
+ { n:'Andromeda Galaxy (M31)', t:'Spiral galaxy', d:2537, ra:0.712, dec:41.27, size:220, incl:77, pa:38, stars:'~1 trillion', desc:'The largest galaxy in the Local Group and the most distant object visible to the naked eye. It is approaching the Milky Way at 110 km/s, and the two will merge in about 4.5 billion years.' },
+ { n:'Triangulum Galaxy (M33)', t:'Spiral galaxy', d:2730, ra:1.564, dec:30.66, size:60, incl:54, pa:23, stars:'~40 billion', desc:'The third-largest member of the Local Group, probably a satellite of Andromeda.' },
+ { n:'M32', t:'Satellite elliptical galaxy', d:2490, ra:0.711, dec:40.87, size:6, desc:'A compact elliptical satellite of Andromeda.' },
+ { n:'M110', t:'Satellite elliptical galaxy', d:2690, ra:0.668, dec:41.68, size:17, desc:'A dwarf elliptical satellite of Andromeda.' },
+ { n:'IC 1613', t:'Irregular dwarf galaxy', d:2380, ra:1.075, dec:2.13, size:10, desc:'An isolated dwarf galaxy used to calibrate cosmic distances.' },
+ { n:'NGC 6822 (Barnard’s Galaxy)', t:'Irregular dwarf galaxy', d:1630, ra:19.75, dec:-14.8, size:7, desc:'An irregular dwarf with active star formation.' },
+ { n:'Wolf–Lundmark–Melotte', t:'Irregular dwarf galaxy', d:3020, ra:0.0, dec:-15.46, size:8, desc:'An isolated dwarf galaxy at the edge of the Local Group.' },
+];
+
+/* =====================================================================
+   ENGINE
+   ===================================================================== */
+const V3 = THREE.Vector3, D2R = Math.PI / 180, TAU = Math.PI * 2;
+const UAU = 100;                       // scene units per AU in the system view
+const KM_U = 149597870.7 / UAU;        // kilometres per scene unit in the system view
+const RSUN_U = 695700 / KM_U;
+const $ = id => document.getElementById(id);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const hexRGB = h => { h = h.replace('#', ''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; };
+const mix = (a, b, t) => [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d });
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hashStr(s) { let h = 7; for (let i = 0; i < s.length; i++) h = Math.imul(h * 31 + s.charCodeAt(i), 2654435761) | 0; return h; }
+function fmtLy(ly) { if (ly >= 1e6) return fmt(ly / 1e6, 2) + ' million ly'; if (ly >= 1000) return fmt(ly) + ' ly'; return fmt(ly, ly < 10 ? 2 : 1) + ' ly'; }
+function fmtPeriod(d) { const a = Math.abs(d); if (a < 1.5) return fmt(a * 24, 1) + ' hours'; if (a < 400) return fmt(a, a < 20 ? 2 : 1) + ' days'; return fmt(a / 365.25, a / 365.25 < 10 ? 2 : 1) + ' years'; }
+function tempColor(T) {   // blackbody approximation
+  T = clamp(T, 1000, 40000) / 100; let r, g, b;
+  if (T <= 66) { r = 255; g = 99.47 * Math.log(T) - 161.12; } else { r = 329.7 * Math.pow(T - 60, -0.1332); g = 288.12 * Math.pow(T - 60, -0.0755); }
+  b = T >= 66 ? 255 : T <= 19 ? 0 : 138.52 * Math.log(T - 10) - 305.04;
+  return new THREE.Color(clamp(r,0,255)/255, clamp(g,0,255)/255, clamp(b,0,255)/255);
+}
+// equatorial coordinates (RA in hours, Dec in degrees) to scene axes: Dec is up
+function eq(raH, decD, d, out = new V3()) { const a = raH * 15 * D2R, de = decD * D2R; return out.set(d*Math.cos(de)*Math.cos(a), d*Math.sin(de), -d*Math.cos(de)*Math.sin(a)); }
+
+/* ---- value noise on the unit sphere (for procedural surfaces) ---- */
+function h3(x, y, z) { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177); h = Math.imul(h ^ h >>> 13, 1103515245); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+function n3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  let fx = x - xi, fy = y - yi, fz = z - zi; fx = fx*fx*(3-2*fx); fy = fy*fy*(3-2*fy); fz = fz*fz*(3-2*fz);
+  const a = h3(xi,yi,zi), b = h3(xi+1,yi,zi), c = h3(xi,yi+1,zi), d = h3(xi+1,yi+1,zi), e = h3(xi,yi,zi+1), f = h3(xi+1,yi,zi+1), g = h3(xi,yi+1,zi+1), h = h3(xi+1,yi+1,zi+1);
+  const x1 = a+(b-a)*fx, x2 = c+(d-c)*fx, x3 = e+(f-e)*fx, x4 = g+(h-g)*fx, y1 = x1+(x2-x1)*fy, y2 = x3+(x4-x3)*fy;
+  return y1 + (y2 - y1) * fz;
+}
+function fbm(x, y, z, o = 4) { let s = 0, a = 0.5, f = 1, t = 0; for (let i = 0; i < o; i++) { s += a * n3(x*f, y*f, z*f); t += a; f *= 2.03; a *= 0.5; } return s / t; }
+
+/* ---- canvas textures ---- */
+function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return new THREE.CanvasTexture(c); }
+function sphereTex(w, h, fn) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); const im = g.createImageData(w, h), px = im.data;
+  for (let y = 0; y < h; y++) {
+    const lat = (0.5 - (y + 0.5) / h) * Math.PI, py = Math.sin(lat), r = Math.cos(lat);
+    for (let x = 0; x < w; x++) {
+      const lon = (x + 0.5) / w * TAU, c4 = fn(r * Math.cos(lon), py, r * Math.sin(lon)), i = (y * w + x) * 4;
+      px[i] = c4[0]; px[i+1] = c4[1]; px[i+2] = c4[2]; px[i+3] = c4.length > 3 ? c4[3] : 255;
+    }
+  }
+  g.putImageData(im, 0, 0); return new THREE.CanvasTexture(c);
+}
+const dotTex = canvasTex(64, 64, (g, w, h) => { const r = g.createRadialGradient(32,32,0,32,32,32); r.addColorStop(0,'rgba(255,255,255,1)'); r.addColorStop(.4,'rgba(255,255,255,.8)'); r.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0,0,w,h); });
+const glowTex = canvasTex(128, 128, (g, w, h) => { const r = g.createRadialGradient(64,64,0,64,64,64); r.addColorStop(0,'rgba(255,255,255,1)'); r.addColorStop(.12,'rgba(255,255,255,.55)'); r.addColorStop(.35,'rgba(255,255,255,.16)'); r.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0,0,w,h); });
+const markTex = canvasTex(64, 64, (g, w, h) => { g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.arc(32,32,24,0,TAU); g.stroke(); g.beginPath(); g.arc(32,32,4,0,TAU); g.fillStyle = '#fff'; g.fill(); });
+
+const T = {
+  rock: (c1, c2, sc = 3, ct = 1) => { c1 = hexRGB(c1); c2 = hexRGB(c2); return (x,y,z) => { const n = fbm(x*sc,y*sc,z*sc,5), m = fbm(x*sc*4+7,y*sc*4,z*sc*4,3); return mix(c1, c2, clamp((n*.65+m*.35-.5)*ct*1.8+.5, 0, 1)); }; },
+  gas: (pal, bands, turb, spot) => { pal = pal.map(hexRGB); const sc = spot && hexRGB(spot.col); return (x,y,z) => {
+      const t = fbm(x*3,y*7,z*3,4) - .5, f = (Math.sin((y + t*turb) * bands * Math.PI) * .5 + .5) * .7 + fbm(x*1.5,y*12,z*1.5,3) * .3;
+      const idx = clamp(f,0,.999) * (pal.length - 1), i = Math.floor(idx); let c = mix(pal[i], pal[i+1], idx - i);
+      if (spot) { let dl = Math.atan2(z,x) - spot.lon; dl = Math.atan2(Math.sin(dl), Math.cos(dl)); const dd = Math.pow(dl/spot.rx, 2) + Math.pow((Math.asin(y) - spot.lat)/spot.ry, 2); if (dd < 1) c = mix(c, sc, (1 - dd) * .9); }
+      return c; }; },
+  earth: () => { const o1 = hexRGB('#0b2858'), o2 = hexRGB('#2563a8'), g1 = hexRGB('#2f6b34'), g2 = hexRGB('#7a8a3c'), br = hexRGB('#a58f5e'), sn = hexRGB('#f4f7fa');
+    return (x,y,z) => { const n = fbm(x*2.1+3,y*2.1,z*2.1,6), ay = Math.abs(y);
+      if (ay + (fbm(x*6,y*6,z*6,3) - .5) * .14 > .9) return sn;
+      if (n > .56) { const e = (n - .56) * 5, dry = fbm(x*3+11,y*3,z*3,3); let c = mix(g1, g2, clamp(e*.8 + (dry-.5)*.8, 0, 1)); c = mix(c, br, clamp((.4-ay)*3,0,1) * clamp((dry-.5)*4+.3,0,1)); if (e > .9) c = mix(c, sn, clamp((e-.9)*3,0,1)); return c; }
+      return mix(o1, o2, Math.pow(clamp(n/.56,0,1), 2)); }; },
+  clouds: () => (x,y,z) => [255, 255, 255, clamp((fbm(x*2.6+5,y*4.5,z*2.6,5) - .5) * 3.2, 0, .9) * 255],
+  mars: () => { const a = hexRGB('#98482a'), b = hexRGB('#d68a58'), d = hexRGB('#4c2f22'), sn = hexRGB('#f2ece6');
+    return (x,y,z) => { const n = fbm(x*2.5,y*2.5,z*2.5,5), m = fbm(x*1.3+4,y*1.3,z*1.3,3); let c = mix(a, b, clamp((n-.3)*2,0,1)); c = mix(c, d, clamp((m-.55)*4,0,.8)); return Math.abs(y) > .93 + (n-.5)*.05 ? sn : c; }; },
+  io: () => { const b = hexRGB('#e0cf6a'), o = hexRGB('#c8742c'), k = hexRGB('#2c2218'); return (x,y,z) => { const n = fbm(x*4,y*4,z*4,4), m = fbm(x*9+3,y*9,z*9,2); let c = mix(b, o, clamp((n-.45)*4,0,1)); return m > .66 ? mix(c, k, .9) : c; }; },
+  europa: () => { const b = hexRGB('#ddd7c9'), k = hexRGB('#8c5c3c'); return (x,y,z) => { const n = fbm(x*3,y*3,z*3,4), r = Math.abs(fbm(x*7+2,y*7,z*7,3) - .5); return mix(mix(b, hexRGB('#c3b49c'), clamp((n-.4)*2,0,1)), k, r < .03 ? .8 : 0); }; },
+  iapetus: () => { const dk = hexRGB('#2a231e'), lt = hexRGB('#dad7d1'); return (x,y,z) => { const t = clamp(x * 5 + (fbm(x*4,y*4,z*4,3) - .5) * 3, -1, 1) * .5 + .5; return mix(lt, dk, t); }; },
+  pluto: () => { const a = hexRGB('#7b5a44'), b = hexRGB('#d2bba2'), h = hexRGB('#f3eadf'); return (x,y,z) => { const n = fbm(x*3,y*3,z*3,5); let c = mix(a, b, clamp((n-.3)*2.2,0,1)); const dl = Math.atan2(z,x) - 3.0, dd = Math.pow(Math.atan2(Math.sin(dl),Math.cos(dl))/.55,2) + Math.pow((Math.asin(y) - .25)/.45,2); return dd < 1 ? mix(c, h, (1-dd)*.85) : c; }; },
+  sun: () => { const a = hexRGB('#ffcf5e'), b = hexRGB('#ff8c1f'), k = hexRGB('#b04a10'); return (x,y,z) => { const n = fbm(x*9,y*9,z*9,4), m = fbm(x*2.4+1,y*2.4,z*2.4,3); let c = mix(b, a, clamp((n-.3)*2.2,0,1)); return m > .64 ? mix(c, k, .6) : c; }; },
+};
+const TEX = {
+  mercury:T.rock('#5f5a55','#b3aca4',3.2,1.2), moon:T.rock('#4d4a47','#b9b4ad',3,1.3), venus:T.gas(['#d8b970','#e9d29b','#c9a45e','#f0e0b8'],4,1.3),
+  earth:T.earth(), mars:T.mars(),
+  jupiter:T.gas(['#c4a07c','#eadfc9','#a2703f','#f4ecdc','#b4835a','#d8c1a0'],11,.28,{lon:1.0,lat:-.38,rx:.2,ry:.09,col:'#b4482c'}),
+  saturn:T.gas(['#d9c38d','#ead9aa','#c8ad78','#f0e4c0'],13,.1), uranus:T.gas(['#97d4dc','#aee0e6','#a2dae1'],6,.05),
+  neptune:T.gas(['#2e4fc4','#4468d8','#2a46b0','#5a7ef0'],9,.12,{lon:2.2,lat:-.3,rx:.16,ry:.08,col:'#1b2f84'}),
+  ceres:T.rock('#5d5c59','#9a9892',3,1.2), eris:T.rock('#d6d4d0','#f3f1ee',2,.5), pluto:T.pluto(), io:T.io(), europa:T.europa(),
+  ganymede:T.rock('#5e564b','#a79d8e',3,1.2), callisto:T.rock('#2e2a26','#6f665c',4,1.5), ice:T.rock('#d8e2ea','#ffffff',2,.5), icegrey:T.rock('#7c7f84','#d5d8dc',3,1.2),
+  dark:T.rock('#3d3630','#7a6e62',3,1.2), titan:T.gas(['#d8a448','#c98f36','#e2b560'],5,.2), triton:T.rock('#cdb8b0','#f0dfd8',2.5,.8), charon:T.rock('#6e6a68','#aaa4a0',3,1.1), iapetus:T.iapetus(),
+};
+/* Texture jobs run one per tick so the page stays responsive while surfaces paint in. */
+const texQ = []; let texBusy = false;
+function queueTex(job) { texQ.push(job); if (!texBusy) { texBusy = true; setTimeout(pumpTex, 30); } }
+function pumpTex() { const j = texQ.shift(); if (!j) { texBusy = false; return; } try { j(); } catch (e) { console.error(e); } setTimeout(pumpTex, 6); }
+function paint(mat, fn, w, h) { queueTex(() => { mat.map = sphereTex(w, h, fn); mat.color.set(0xffffff); mat.needsUpdate = true; }); }
+function exoTexFn(def, teq) {   // illustrative surfaces for exoplanets; only size and orbit are measured
+  const rnd = rng(hashStr(def.n)), Re = def.Rkm / RE_KM;
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  if (Re > 6) return teq > 1100 ? T.gas(['#2a1c1c','#4b2a22','#6b3a2a'], 6, .3) : T.gas(pick([['#c4a07c','#eadfc9','#a2703f'],['#8ea9c9','#c9d8ea','#6d86a8'],['#d9c38d','#ead9aa','#c8ad78']]), 8 + Math.floor(rnd()*6), .2);
+  if (Re > 2.6) return T.gas(pick([['#7aa6d8','#a9c8ec','#5c88c0'],['#6fb3b0','#a5d6d2','#4f9390']]), 5, .12);
+  if (teq > 900) return T.rock('#1d1412', '#c2491a', 3, 1.6);
+  if (teq > 600) return T.rock('#4a3a30', '#a8754a', 3, 1.3);
+  return T.rock(pick(['#5c6b5a','#7b6a58','#59606e','#8a7461']), pick(['#a8b4a0','#c2ad93','#9aa3b4','#cdb8a0']), 3, 1.2);
+}
+const ringTexSaturn = canvasTex(512, 1, (g, w) => { for (let x = 0; x < w; x++) { const u = x / w; let a = 0;
+  if (u < .12) a = .06; else if (u < .22) a = .22; else if (u < .5) a = .9 - (u - .22) * .35; else if (u < .56) a = .06; else if (u < .88) a = .7 - (u - .56) * .3; else if (u < .9) a = .05; else if (u < .98) a = .55; a *= .75 + .25 * Math.sin(u * 120) * Math.sin(u * 47);
+  const c = Math.round(185 + 50 * Math.sin(u * 30 + 1)); g.fillStyle = `rgba(${c+15},${c-5},${c-45},${clamp(a,0,1)})`; g.fillRect(x, 0, 1, 1); } });
+const ringTexUranus = canvasTex(512, 1, (g, w) => { for (let x = 0; x < w; x++) { const u = x / w; let a = 0; for (const p of [.18,.3,.42,.55,.66,.78,.92]) a = Math.max(a, Math.exp(-Math.pow((u - p) / .012, 2)) * .5); g.fillStyle = `rgba(170,190,200,${a})`; g.fillRect(x, 0, 1, 1); } });
+function ringGeo(inner, outer) { const g = new THREE.RingGeometry(inner, outer, 128, 1), p = g.attributes.position, uv = g.attributes.uv; for (let i = 0; i < p.count; i++) uv.setXY(i, (Math.hypot(p.getX(i), p.getY(i)) - inner) / (outer - inner), .5); return g; }
+const sphereGeo = new THREE.SphereGeometry(1, 56, 36);
+
+/* ---- renderer, scene, camera ---- */
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, logarithmicDepthBuffer: true }); }
+catch (e) { $('err').style.display = 'flex'; $('loading').remove(); throw e; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x03050c, 1);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.0005, 3e6);
+const size = { w: 1, h: 1 };
+// On narrow screens the info card spans the width, so shift the render centre into the free area above it.
+function layoutView() {
+  const W = size.w, H = size.h, info = $('info'); let d = 0;
+  if (info.offsetWidth > W * .8) { const free0 = $('top').offsetHeight, free1 = H - $('bottom').offsetHeight; d = Math.round(H / 2 - (free0 + free1) / 2); }
+  if (d > 0) camera.setViewOffset(W, H, 0, d, W, H); else camera.clearViewOffset();
+}
+function resize() { const a = $('app'); size.w = a.clientWidth || 1; size.h = a.clientHeight || 1; renderer.setSize(size.w, size.h, false); camera.aspect = size.w / size.h; camera.updateProjectionMatrix(); layoutView(); }
+new ResizeObserver(resize).observe($('app')); new ResizeObserver(layoutView).observe($('bottom')); resize();
+
+// background stars
+const sky = (() => { const n = 3500, p = new Float32Array(n*3), c = new Float32Array(n*3), r = rng(7);
+  for (let i = 0; i < n; i++) { const u = r()*2-1, a = r()*TAU, s = Math.sqrt(1-u*u); p.set([s*Math.cos(a)*1000, u*1000, s*Math.sin(a)*1000], i*3); const b = .25 + Math.pow(r(), 3) * .75, t = r(); c.set(t < .15 ? [b*.7,b*.8,b] : t > .85 ? [b,b*.85,b*.65] : [b,b,b], i*3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p,3)); g.setAttribute('color', new THREE.BufferAttribute(c,3));
+  const m = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.5, sizeAttenuation: false, vertexColors: true, depthTest: false, depthWrite: false, transparent: true, opacity: .9, map: dotTex }));
+  m.frustumCulled = false; m.renderOrder = -10; scene.add(m); return m; })();
+
+/* ---- orbit camera ---- */
+const cam = { target: new V3(), tTarget: new V3(), offset: new V3(), dist: 100, tDist: 100, yaw: .6, pitch: .5, min: .01, max: 1e5, follow: null };
+const tmp = new V3(), tmp2 = new V3();
+function placeCamera(dt) {
+  const k = 1 - Math.exp(-dt * 5);
+  cam.dist += (cam.tDist - cam.dist) * k;
+  if (cam.follow) { const p = cam.follow.pos(); cam.offset.multiplyScalar(Math.exp(-dt * 5)); cam.target.copy(p).add(cam.offset); cam.tTarget.copy(cam.target); }
+  else cam.target.lerp(cam.tTarget, k);
+  const cp = Math.cos(cam.pitch);
+  camera.position.set(cam.target.x + cam.dist * cp * Math.sin(cam.yaw), cam.target.y + cam.dist * Math.sin(cam.pitch), cam.target.z + cam.dist * cp * Math.cos(cam.yaw));
+  camera.lookAt(cam.target); sky.position.copy(camera.position);
+}
+function setCam(o) { const { target, follow, ...rest } = o; Object.assign(cam, rest); if (rest.dist != null) cam.tDist = rest.dist; if (target) { cam.target.copy(target); cam.tTarget.copy(target); } cam.follow = follow || null; cam.offset.set(0, 0, 0); }
+function flyTo(item, dist) {
+  if (!item) return;
+  tmp.copy(item.pos()); cam.offset.copy(cam.target).sub(tmp);
+  cam.follow = item.follow === false ? null : item; cam.tTarget.copy(tmp);
+  cam.tDist = clamp(dist ?? item.focusDist?.() ?? 10, cam.min, cam.max);
+}
+const ptrs = new Map(); let pinch0 = 0, downInfo = null;
+const canvas = $('gl');
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); downInfo = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, n: ptrs.size }; if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); } hideHint(); });
+canvas.addEventListener('pointermove', e => {
+  const p = ptrs.get(e.pointerId); if (!p) return; const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  if (downInfo) { downInfo.moved += Math.abs(dx) + Math.abs(dy); if (ptrs.size > 1) downInfo.n = 2; }
+  p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 1) {
+    if (e.buttons & 2 || e.shiftKey) { // pan
+      const s = cam.dist * 0.0016, right = tmp.set(1,0,0).applyQuaternion(camera.quaternion), up = tmp2.set(0,1,0).applyQuaternion(camera.quaternion);
+      cam.follow = null; cam.tTarget.addScaledVector(right, -dx * s).addScaledVector(up, dy * s); cam.target.copy(cam.tTarget);
+    } else { cam.yaw -= dx * 0.006; cam.pitch = clamp(cam.pitch + dy * 0.006, -1.5, 1.5); }
+  } else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch0 > 0 && d > 0) { cam.tDist = clamp(cam.tDist * pinch0 / d, cam.min, cam.max); cam.dist = cam.tDist; } pinch0 = d;
+  }
+});
+function endPtr(e) { if (!ptrs.has(e.pointerId)) return; const wasTap = downInfo && downInfo.n === 1 && downInfo.moved < 8 && performance.now() - downInfo.t < 600 && ptrs.size === 1 && e.type === 'pointerup'; ptrs.delete(e.pointerId); if (wasTap) { const r = canvas.getBoundingClientRect(); onTap(e.clientX - r.left, e.clientY - r.top); } if (ptrs.size < 2) pinch0 = 0; }
+canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointercancel', endPtr);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => { e.preventDefault(); hideHint(); cam.tDist = clamp(cam.tDist * Math.exp(e.deltaY * 0.0012 * (e.deltaMode === 1 ? 16 : 1)), cam.min, cam.max); }, { passive: false });
+let hintGone = false; function hideHint() { if (!hintGone) { hintGone = true; $('hint').classList.add('off'); } }
+setTimeout(hideHint, 9000);
+
+/* ---- labels, reticle, picking ---- */
+const labelsEl = $('labels');
+function mkLabel(text, cls) { const d = document.createElement('div'); d.className = 'lbl ' + cls; const s = document.createElement('span'); s.textContent = text; d.appendChild(s); labelsEl.appendChild(d); return d; }
+const proj = new V3(); const focalPx = () => size.h / 2 / Math.tan(camera.fov * D2R / 2);
+function screenOf(p, out) { proj.copy(p).project(camera); if (proj.z > 1 || proj.z < -1) return null; out.x = (proj.x * .5 + .5) * size.w; out.y = (-proj.y * .5 + .5) * size.h; return out; }
+const scr = { x: 0, y: 0 };
+const LPRIO = { star: 1, planet: 2, '': 2, region: 3, moon: 4, ring: 5 };
+function updateLabels() {
+  if (!view) return; const f = focalPx(), cand = [];
+  for (const L of view.labels) {
+    let ok = S.labels && (!L.show || L.show()), x = 0, y = 0, off = 10;
+    if (ok) { const p = L.pos(); if (!screenOf(p, scr) || scr.x < -80 || scr.x > size.w + 80 || scr.y < -30 || scr.y > size.h + 30) ok = false;
+      else { x = scr.x; y = scr.y; if (L.item && L.item.rad) off += Math.min(L.item.rad() / camera.position.distanceTo(p) * f, 220); } }
+    if (!ok) { if (L.on) { L.el.style.display = 'none'; L.on = false; } continue; }
+    if (L.w == null) L.w = L.el.textContent.length * 5.9 + 6;
+    const cls = L.el.className.replace('lbl', '').replace('sel', '').trim();
+    cand.push({ L, x, y, off, pr: L.item === selected ? 0 : (LPRIO[cls] ?? 2) });
+  }
+  cand.sort((a, b) => a.pr - b.pr); const placed = [];
+  for (const c of cand) {
+    const x1 = c.x + c.off - 4, x2 = x1 + c.L.w + 8, y1 = c.y - 8, y2 = c.y + 8; let hit = false;
+    for (const q of placed) if (x1 < q[2] && x2 > q[0] && y1 < q[3] && y2 > q[1]) { hit = true; break; }
+    if (hit) { if (c.L.on) { c.L.el.style.display = 'none'; c.L.on = false; } continue; }
+    placed.push([x1, y1, x2, y2]); c.L.el.firstChild.style.marginLeft = (c.off - 10) + 'px'; c.L.el.style.transform = `translate(${c.x.toFixed(1)}px,${c.y.toFixed(1)}px)`;
+    if (!c.L.on) { c.L.el.style.display = 'block'; c.L.on = true; }
+  }
+  const r = $('reticle');
+  if (selected && !selected.noReticle && selected.pos && screenOf(selected.pos(), scr)) { const px = selected.rad ? selected.rad() / camera.position.distanceTo(selected.pos()) * f : 0, s = clamp(px * 2 + 16, 24, 600); r.style.display = 'block'; r.style.width = r.style.height = s + 'px'; r.style.transform = `translate(${(scr.x - s/2).toFixed(1)}px,${(scr.y - s/2).toFixed(1)}px)`; r.style.opacity = px > 60 ? 0 : 1; }
+  else r.style.display = 'none';
+}
+function onTap(px, py) {
+  if (!view) return; const f = focalPx(); let best = null, bd = 1e9;
+  for (const it of view.items()) {
+    if (it.pick === false) continue; const p = it.pos(); if (!screenOf(p, scr)) continue;
+    const rpx = it.rad ? it.rad() / camera.position.distanceTo(p) * f : 0, d = Math.hypot(scr.x - px, scr.y - py) - Math.min(rpx, 300) * .6;
+    if (d < Math.max(22, Math.min(rpx, 300) * .4 + 10) && d < bd) { bd = d; best = it; }
+  }
+  if (best) select(best, true); else if (level === 'system') { /* empty tap keeps selection */ }
+}
+
+/* ---- display options ---- */
+const S = { orbits: true, labels: true, moons: true, belts: true, hz: true, trueScale: false, rotate: true, grid: true, sky: true };
+for (const k of Object.keys(S)) { const el = $('o_' + (k === 'trueScale' ? 'true' : k)); if (!el) continue; el.checked = S[k]; el.addEventListener('change', () => { S[k] = el.checked; applyOptions(); }); }
+function applyOptions() { sky.visible = S.sky; if (view && view.applyOptions) view.applyOptions(); }
+$('btnMenu').onclick = () => { const m = $('menu'); m.hidden = !m.hidden; $('btnMenu').setAttribute('aria-pressed', String(!m.hidden)); };
+
+/* =====================================================================
+   SELECTION + INFO PANEL
+   ===================================================================== */
+let view = null, level = null, selected = null, navBusy = false;
+const views = {}, time = { days: 0, playing: true, dir: 1, rate: 20 };
+function select(it, fly) {
+  selected = it; if (view) for (const L of view.labels) L.el.classList.toggle('sel', L.item === it);
+  if (view && view.onSelect) view.onSelect(it);
+  renderInfo(it); if (fly) flyTo(it);
+}
+let infoMin = innerWidth < 820;
+function renderInfo(it) {
+  const i = it.info(), el = $('info'), wasMin = infoMin; el.classList.toggle('min', infoMin);
+  el.innerHTML = `<div class="head"><div><div class="kind">${esc(i.kind)}${(i.tags || []).map(t => `<span class="tag ${t[1] || ''}">${esc(t[0])}</span>`).join('')}</div><h2>${esc(i.title)}</h2>${i.sub ? `<p class="sub">${esc(i.sub)}</p>` : ''}</div><button class="fold" aria-label="Collapse or expand details">${wasMin ? '▴' : '▾'}</button></div>`
+    + (i.stats && i.stats.length ? `<dl>${i.stats.map(s => `<div><dt>${esc(s[0])}</dt><dd>${esc(s[1])}</dd></div>`).join('')}</dl>` : '')
+    + (i.desc ? `<p class="desc">${esc(i.desc)}</p>` : '') + `<div class="acts"></div>`;
+  const acts = el.querySelector('.acts');
+  for (const a of i.acts || []) { const b = document.createElement('button'); b.className = 'btn' + (a.primary ? ' primary' : ''); b.textContent = a.label; b.onclick = a.fn; acts.appendChild(b); }
+  if (!acts.children.length) acts.remove();
+  el.querySelector('.fold').onclick = () => { infoMin = !infoMin; el.classList.toggle('min', infoMin); el.querySelector('.fold').textContent = infoMin ? '▴' : '▾'; };
+  el.scrollTop = 0;
+}
+
+/* =====================================================================
+   VIEW: LOCAL GROUP  (1 scene unit = 5,000 light-years)
+   ===================================================================== */
+function galTex(arms, seed) {
+  const r = rng(seed);
+  return canvasTex(256, 256, (g, w, h) => {
+    g.globalCompositeOperation = 'lighter';
+    let gr = g.createRadialGradient(128,128,0,128,128,128); gr.addColorStop(0,'rgba(255,232,196,.95)'); gr.addColorStop(.1,'rgba(255,208,150,.6)'); gr.addColorStop(.4,'rgba(130,160,255,.2)'); gr.addColorStop(1,'rgba(60,80,200,0)'); g.fillStyle = gr; g.fillRect(0,0,w,h);
+    for (let i = 0; i < 3000; i++) { const j = Math.floor(r() * arms), rr = 10 + Math.pow(r(), .7) * 112, th = Math.log(rr / 10) * 3.4 + j * TAU / arms + (r() - .5) * .4;
+      g.fillStyle = `rgba(${170 + r()*60|0},${190 + r()*50|0},255,${.2 + r()*.45})`; g.fillRect(128 + rr * Math.cos(th), 128 + rr * Math.sin(th), 1.6, 1.6); }
+    g.globalCompositeOperation = 'destination-in'; gr = g.createRadialGradient(128,128,0,128,128,128); gr.addColorStop(0,'#fff'); gr.addColorStop(.8,'rgba(255,255,255,.9)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0,0,w,h);
+  });
+}
+function makeDot(col, px, add) {
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ color: col, size: px, sizeAttenuation: false, map: dotTex, transparent: true, depthTest: false, depthWrite: false, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending }));
+  p.frustumCulled = false; return p;
+}
+function ringLine(r, col, op, seg = 160) { const p = []; for (let i = 0; i < seg; i++) { const a = i / seg * TAU; p.push(r * Math.cos(a), 0, r * Math.sin(a)); } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); return new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false })); }
+
+views.group = (() => {
+  const g = new THREE.Group(), items = [], labels = [], grid = new THREE.Group(), U = 5000; let built = false, mw;
+  function build() {
+    built = true; g.add(grid);
+    for (const r of [200, 400, 600]) { grid.add(ringLine(r, 0x7fb4ff, .14, 200)); const L = { el: mkLabel(r * U / 1e6 + ' million ly', 'ring'), pos: () => new V3(r * Math.cos(-.7), 0, r * Math.sin(-.7)), on: false }; labels.push(L); L.grid = true; }
+    for (const e of LOCAL) {
+      const pos = e.d ? eq(e.ra, e.dec, e.d * 1000 / U) : new V3(), rad = Math.max(e.size / 10, .6), big = e.size >= 20;
+      if (big) {
+        const yaw = new THREE.Group(), tilt = new THREE.Group(), m = new THREE.Mesh(new THREE.PlaneGeometry(e.size / 5 * 1.1, e.size / 5 * 1.1), new THREE.MeshBasicMaterial({ map: galTex(e.n === 'Milky Way' ? 4 : 2, hashStr(e.n)), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        m.rotation.x = -Math.PI / 2; tilt.rotation.x = (e.incl || 60) * D2R; yaw.rotation.y = (e.pa || 0) * D2R; tilt.add(m); yaw.add(tilt); yaw.position.copy(pos); g.add(yaw);
+      } else { const d = makeDot(0xbcd0ff, 6 + Math.min(e.size, 14) * .3, true); d.position.copy(pos); g.add(d); }
+      const it = { id: e.n, name: e.n, kind: 'galaxy', pos: () => pos, rad: () => rad, follow: false, focusDist: () => Math.max(rad * 5, 14), e,
+        info: () => ({ kind: e.t, title: e.n, sub: e.d ? fmtLy(e.d * 1000) + ' from the Milky Way' : 'You are here',
+          stats: [['Distance', e.d ? fmtLy(e.d * 1000) : 'Home'], ['Diameter', fmt(e.size * 1000) + ' ly'], ...(e.stars ? [['Stars', e.stars]] : [])], desc: e.desc,
+          acts: e.enter ? [{ label: 'Enter the Milky Way', primary: true, fn: () => go('galaxy') }] : [] }) };
+      items.push(it); if (e.n === 'Milky Way') mw = it;
+      labels.push({ el: mkLabel(e.n.replace(/ \(.*/, ''), big ? 'star' : 'moon'), pos: () => pos, item: it, show: big ? null : (e.d < 500 ? () => cam.dist < 400 : () => cam.dist < 1500), on: false });
+    }
+  }
+  return {
+    items: () => items, labels, enter() {
+      if (!built) build(); scene.add(g);
+      const m31 = LOCAL.find(e => e.n.startsWith('Andromeda')); setCam({ dist: 1050, pitch: .5, yaw: -.5, target: eq(m31.ra, m31.dec, m31.d * 1000 / U).multiplyScalar(.4), min: 3, max: 9000 });
+      this.applyOptions(); select(mw, false);
+    },
+    leave() { scene.remove(g); labels.forEach(L => { L.el.style.display = 'none'; L.on = false; }); },
+    applyOptions() { grid.visible = S.grid; labels.forEach(L => { if (L.grid) L.show = () => S.grid; }); }, update() {},
+  };
+})();
+
+/* =====================================================================
+   VIEW: MILKY WAY  (1 scene unit = 100 light-years; Sun at x = 260)
+   ===================================================================== */
+views.galaxy = (() => {
+  const gal = new THREE.Group(), root = new THREE.Group(), grid = new THREE.Group(), items = [], labels = [];
+  const SUN = new V3(260, 0, 0), K = 1 / Math.tan(13 * D2R); let built = false, mwItem, sunItem;
+  const armPos = (j, r) => { const p = -K * Math.log(r / 215) + j * Math.PI / 2; return new V3(r * Math.cos(p), 0, r * Math.sin(p)); };
+  const wp = new V3();
+  function layer(arr, size, op, blend, order) {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr.p, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(arr.c, 3));
+    const m = new THREE.Points(g, new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true, map: dotTex, transparent: true, opacity: op, depthWrite: false, depthTest: false, blending: blend || THREE.AdditiveBlending }));
+    m.renderOrder = order || 1; m.frustumCulled = false; gal.add(m);
+  }
+  function addItem(o) {
+    const local = o.local; o.pos = () => gal.localToWorld(wp.copy(local)); o.follow = false; items.push(o);
+    if (o.label) labels.push({ el: mkLabel(o.name, o.lcls || 'region'), pos: () => gal.localToWorld(new V3().copy(local)), item: o, show: o.lshow, on: false });
+  }
+  function build() {
+    built = true; const rnd = rng(2024), gauss = () => { let u = 0; for (let i = 0; i < 4; i++) u += rnd(); return (u - 2) / .577; };
+    const A = () => ({ p: [], c: [] }), old = A(), young = A(), hii = A(), bulge = A(), bar = A(), halo = A(), glob = A(), dust = A();
+    const push = (L, x, y, z, c, b) => { L.p.push(x, y, z); L.c.push(c[0] * b, c[1] * b, c[2] * b); };
+    for (let i = 0; i < 64000; i++) {
+      const j = Math.floor(rnd() * 4), r = 40 - 170 * Math.log(1 - rnd() * (1 - Math.exp(-460 / 170))), inter = rnd() < .2;
+      let phi = -K * Math.log(r / 215) + j * Math.PI / 2; phi += inter ? (rnd() - .5) * 1.5 : gauss() * Math.min(.5, 22 / r + .035);
+      const y = gauss() * (1.1 + r * .004), t = rnd(), x = r * Math.cos(phi), z = r * Math.sin(phi);
+      if (!inter && t < .13) push(young, x, y * .6, z, [.62, .75, 1], .55 + rnd() * .4);
+      else push(old, x, y, z, r < 110 ? [1, .82, .55] : [1, .93, .8], .28 + rnd() * .4);
+    }
+    for (let i = 0; i < 380; i++) { const j = Math.floor(rnd() * 4), r = 90 + rnd() * 360, p = -K * Math.log(r / 215) + j * Math.PI / 2 + gauss() * .03; push(hii, r * Math.cos(p), gauss() * .6, r * Math.sin(p), [1, .42, .6], .8); }
+    for (let i = 0; i < 5500; i++) { const j = Math.floor(rnd() * 4), r = 70 + rnd() * 380, p = -K * Math.log(r / 215) + j * Math.PI / 2 - .1 + gauss() * .03; push(dust, r * Math.cos(p), gauss() * .5, r * Math.sin(p), [0, 0, 0], 1); }
+    for (let i = 0; i < 14000; i++) push(bulge, gauss() * 20, gauss() * 14, gauss() * 20, [1, .8, .52], .3 + rnd() * .5);
+    const ca = Math.cos(27 * D2R), sa = Math.sin(27 * D2R);
+    for (let i = 0; i < 7000; i++) { const a = gauss() * 38, b = gauss() * 10; push(bar, a * ca - b * sa, gauss() * 6, a * sa + b * ca, [1, .78, .5], .3 + rnd() * .5); }
+    for (let i = 0; i < 1800; i++) { const u = rnd() * 2 - 1, th = rnd() * TAU, s = Math.sqrt(1 - u * u), r = 650 * Math.pow(rnd(), 1.5); push(halo, s * Math.cos(th) * r, u * r, s * Math.sin(th) * r, [.9, .8, .6], .35); }
+    for (let i = 0; i < 160; i++) { const u = rnd() * 2 - 1, th = rnd() * TAU, s = Math.sqrt(1 - u * u), r = 20 + rnd() * 380; push(glob, s * Math.cos(th) * r, u * r, s * Math.sin(th) * r, [1, .9, .65], .9); }
+    layer(old, 1.8, .55); layer(bulge, 2.2, .5); layer(bar, 2, .5); layer(young, 3.2, .75); layer(hii, 5, .55); layer(halo, 1.4, .45); layer(glob, 3, .8); layer(dust, 7, .12, THREE.NormalBlending, 3);
+    // soft glow of the disc and bar
+    const disc = new THREE.Mesh(new THREE.PlaneGeometry(1100, 1100), new THREE.MeshBasicMaterial({ map: canvasTex(256, 256, (g, w, h) => { const r = g.createRadialGradient(128,128,0,128,128,128); r.addColorStop(0,'rgba(255,220,170,.5)'); r.addColorStop(.12,'rgba(255,196,130,.3)'); r.addColorStop(.4,'rgba(120,150,255,.1)'); r.addColorStop(.75,'rgba(90,120,230,.04)'); r.addColorStop(1,'rgba(60,80,200,0)'); g.fillStyle = r; g.fillRect(0,0,w,h); }), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+    disc.rotation.x = -Math.PI / 2; disc.renderOrder = 0; gal.add(disc);
+    const bg = new THREE.Group(), bm = new THREE.Mesh(new THREE.PlaneGeometry(220, 70), new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffc27a, transparent: true, opacity: .55, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })); bm.rotation.x = -Math.PI / 2; bg.rotation.y = -27 * D2R; bg.add(bm); gal.add(bg);
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffd9a0, transparent: true, opacity: .9, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })); core.scale.setScalar(70); gal.add(core);
+    for (let k = 1; k <= 5; k++) { grid.add(ringLine(k * 100, 0x7fb4ff, .1, 220)); labels.push({ el: mkLabel(fmt(k * 10000) + ' ly', 'ring'), pos: () => new V3(k * 100 * Math.cos(-2.3), 0, k * 100 * Math.sin(-2.3)), on: false, grid: true }); }
+    gal.add(grid); root.add(gal);
+    // Sun marker
+    const sm = makeDot(0xffb454, 24, true); sm.material.map = markTex; sm.position.copy(SUN); gal.add(sm);
+    const sg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffd080, transparent: true, opacity: .9, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })); sg.scale.setScalar(9); sg.position.copy(SUN); gal.add(sg);
+
+    mwItem = { id: 'mw', name: 'Milky Way', kind: 'galaxy', local: new V3(), rad: () => 0, noReticle: true, pick: false, focusDist: () => 1100, info: () => ({ kind: 'Barred spiral galaxy', title: 'The Milky Way', sub: 'A schematic model of our home galaxy',
+      stats: [['Diameter', '~105,000 ly'], ['Disc thickness', '~1,000 ly'], ['Stars', '200–400 billion'], ['Sun’s distance from centre', '~26,000 ly'], ['Sun’s orbit', '~230 million yr per lap'], ['Central black hole', '4.3 million Suns']],
+      desc: 'Four spiral arms and a central bar, drawn as a model from published structure. Landmarks are placed from their real galactic coordinates. The disc turns slowly; the Sun circles the centre at about 220 km/s.',
+      acts: [{ label: 'Zoom to the Sun’s neighborhood', primary: true, fn: () => go('near') }, { label: 'Zoom out to Local Group', fn: () => go('group') }] }) };
+    mwItem.pos = () => gal.localToWorld(wp.set(0, 0, 0)); items.push(mwItem);
+    sunItem = { id: 'sun', name: 'Sun', kind: 'star', local: SUN.clone(), rad: () => 6, focusDist: () => 180, info: () => ({ kind: 'You are here', title: 'The Sun', sub: 'Orion Spur, 26,000 light-years from the centre',
+      stats: [['From galactic centre', '~26,000 ly'], ['Position', 'Between the Sagittarius and Perseus arms'], ['Height above the disc', '~55 ly north']], desc: 'Our star sits in a minor spur between two of the Milky Way’s major arms, about halfway from the centre to the visible edge of the disc.',
+      acts: [{ label: 'Zoom to the neighborhood', primary: true, fn: () => go('near') }] }) };
+    addItem({ ...sunItem, local: SUN.clone(), label: true, lcls: 'star' }); sunItem = items[items.length - 1];
+    addItem({ id: 'sgra', name: 'Sagittarius A*', kind: 'bh', local: new V3(), rad: () => 8, focusDist: () => 120, label: true,
+      info: () => ({ kind: 'Supermassive black hole', title: 'Sagittarius A*', sub: '~26,000 ly from the Sun', stats: [['Mass', '4.3 million Suns'], ['Distance', '~26,700 ly']], desc: 'The black hole at the centre of the Milky Way. Stars orbit it at thousands of kilometres per second, and the Event Horizon Telescope imaged its shadow in 2022.' }) });
+    addItem({ id: 'bar', name: 'Galactic Bar', kind: 'region', local: new V3(80 * ca, 0, 80 * sa), rad: () => 18, focusDist: () => 260, label: true,
+      info: () => ({ kind: 'Structure', title: 'Galactic Bar', sub: '~27° from the Sun–centre line', stats: [['Length', '~27,000 ly']], desc: 'A bar of old stars about 27,000 light-years long runs through the centre. It feeds gas inward and shapes the inner spiral arms.' }) });
+    for (const a of ARMS) addItem({ id: a.n, name: a.n, kind: 'region', local: armPos(a.j, a.r), rad: () => 30, focusDist: () => 340, label: true,
+      info: () => ({ kind: 'Spiral arm', title: a.n, sub: 'Schematic position', stats: [], desc: a.desc }) });
+    for (const s of GAL_SITES) {
+      const l = s.l * D2R, b = s.b * D2R, X = s.d * Math.cos(b) * Math.cos(l), Y = s.d * Math.cos(b) * Math.sin(l), Z = s.d * Math.sin(b);
+      const local = new V3(260 - X / 100, Z / 100, Y / 100), d = makeDot(0xcfe0ff, 6, true); d.position.copy(local); gal.add(d);
+      addItem({ id: s.n, name: s.n, kind: 'site', local, rad: () => 3, focusDist: () => 60, label: true, lcls: 'moon', lshow: () => cam.dist < 900,
+        info: () => ({ kind: s.t, title: s.n, sub: fmtLy(s.d) + ' from the Sun', stats: [['Distance', fmtLy(s.d)], ['Galactic longitude', fmt(s.l, 1) + '°'], ['Galactic latitude', fmt(s.b, 1) + '°']], desc: s.desc }) });
+    }
+  }
+  return {
+    items: () => items, labels,
+    enter(o) { if (!built) build(); scene.add(root); setCam({ dist: 1000, pitch: .95, yaw: .3, target: new V3(), min: 8, max: 4500 }); this.applyOptions(); select(mwItem, false); },
+    leave() { scene.remove(root); labels.forEach(L => { L.el.style.display = 'none'; L.on = false; }); },
+    applyOptions() { grid.visible = S.grid; labels.forEach(L => { if (L.grid) L.show = () => S.grid; }); },
+    update(dt) { if (S.rotate) gal.rotation.y += dt * .012; gal.updateMatrixWorld(true); },
+  };
+})();
+
+/* =====================================================================
+   VIEW: NEIGHBORHOOD  (1 scene unit = 0.1 light-year)
+   ===================================================================== */
+views.near = (() => {
+  const g = new THREE.Group(), items = [], labels = [], grid = new THREE.Group(), UL = 10; let built = false, sunIt;
+  function starInfo(s) {
+    const np = s.plan === 'sol' ? 11 : (s.planets ? s.planets.length : 0);
+    return () => ({ kind: 'Star · ' + s.cls, title: s.n, sub: s.d ? fmtLy(s.d) + ' from the Sun' : 'Our home star',
+      tags: np ? [[s.plan === 'sol' ? '8 planets' : np + (np === 1 ? ' planet' : ' planets'), 'good']] : [],
+      stats: [['Distance', s.d ? fmtLy(s.d) : '0'], ['Temperature', fmt(s.T) + ' K'], ['Radius', fmt(s.R, s.R < .1 ? 4 : 2) + ' × Sun'], ['Mass', fmt(s.M, 3) + ' × Sun'], ['Luminosity', fmt(s.L, s.L < .01 ? 5 : 2) + ' × Sun'], ['Age', s.age || 'unknown'], ['Known planets', s.plan === 'sol' ? '8 + 3 dwarf' : (np ? String(np) : 'None found')]],
+      desc: s.desc, acts: [{ label: 'Enter system', primary: true, fn: () => go('system', { star: s.id }) }] });
+  }
+  function build() {
+    built = true;
+    for (const r of [50, 100, 200, 300, 400]) { grid.add(ringLine(r, 0x7fb4ff, .16)); labels.push({ el: mkLabel(r / UL + ' ly', 'ring'), pos: () => new V3(r * Math.cos(.35), 0, -r * Math.sin(.35)), on: false, grid: true }); }
+    g.add(grid);
+    const stems = [], sc = [];
+    for (const s of STARS) {
+      const pos = s.d ? eq(s.ra, s.dec, s.d * UL) : new V3(), col = tempColor(s.T), px = clamp(9 + 2.6 * Math.log10(Math.max(s.L, 1e-4)), 6, 22);
+      const dot = makeDot(col, px, true); dot.position.copy(pos); g.add(dot);
+      const halo = makeDot(col, px * 2.2, true); halo.material.opacity = .25; halo.position.copy(pos); g.add(halo);
+      if (s.d) { stems.push(pos.x, pos.y, pos.z, pos.x, 0, pos.z); }
+      const it = { id: s.id, name: s.n, kind: 'star', star: s, pos: () => pos, rad: () => 4, follow: false, focusDist: () => 140, info: starInfo(s) };
+      items.push(it); if (s.id === 'sol') sunIt = it;
+      labels.push({ el: mkLabel(s.n.replace(/ A and B$/, ' A/B').replace(/^Sun \(Sol\)$/, 'Sun'), s.id === 'sol' ? 'star' : 'moon'), pos: () => pos, item: it, on: false });
+    }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(stems, 3));
+    g.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0x7fb4ff, transparent: true, opacity: .22, depthWrite: false })));
+    const north = new V3(0, 440, 0), gc = eq(17.76, -28.94, 440);
+    labels.push({ el: mkLabel('↑ Celestial north', 'ring'), pos: () => north, on: false }, { el: mkLabel('Toward galactic centre →', 'ring'), pos: () => gc, on: false });
+  }
+  return {
+    items: () => items, labels,
+    enter(o) { if (!built) build(); scene.add(g); setCam({ dist: 560, pitch: .5, yaw: .8, target: new V3(), min: 8, max: 2500 }); this.applyOptions(); select(sunIt, false); },
+    leave() { scene.remove(g); labels.forEach(L => { L.el.style.display = 'none'; L.on = false; }); },
+    applyOptions() { grid.visible = S.grid; labels.forEach(L => { if (L.grid) L.show = () => S.grid; }); }, update() {},
+  };
+})();
+
+/* =====================================================================
+   VIEW: STAR SYSTEM  (1 AU = 100 scene units)
+   ===================================================================== */
+function keplerSolve(M, e) { M %= TAU; if (M < 0) M += TAU; let E = e < .8 ? M : Math.PI; for (let i = 0; i < 14; i++) { const d = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); E -= d; if (Math.abs(d) < 1e-9) break; } return E; }
+function mkOrbit(a, e, i, node, argp) { return { a, e, cw: Math.cos(argp), sw: Math.sin(argp), cO: Math.cos(node), sO: Math.sin(node), ci: Math.cos(i), si: Math.sin(i) }; }
+function orbitPos(o, E, out) {
+  const xp = o.a * (Math.cos(E) - o.e), yp = o.a * Math.sqrt(1 - o.e * o.e) * Math.sin(E);
+  const x = xp * (o.cw * o.cO - o.sw * o.sO * o.ci) - yp * (o.sw * o.cO + o.cw * o.sO * o.ci);
+  const y = xp * (o.cw * o.sO + o.sw * o.cO * o.ci) - yp * (o.sw * o.sO - o.cw * o.cO * o.ci);
+  const z = xp * o.sw * o.si + yp * o.cw * o.si;
+  return out.set(x, z, -y);
+}
+function orbitLine(o, scale, col, op) {
+  const p = [], v = new V3(); for (let i = 0; i < 256; i++) { orbitPos(o, i / 256 * TAU, v); p.push(v.x * scale, v.y * scale, v.z * scale); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  return new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false }));
+}
+const MOON_COL = { moon:'#8f8a85', io:'#d8c35c', europa:'#d9d2c3', ganymede:'#85796a', callisto:'#554d45', ice:'#e5ecef', icegrey:'#a5a8ac', dark:'#5b5148', titan:'#d09a40', triton:'#dcc8c0', charon:'#8a8582', iapetus:'#7a746e' };
+
+function buildSystem(st) {
+  const g = new THREE.Group(), bodies = [], items = [], labels = [], belts = [], orbitLines = [], isSol = st.plan === 'sol';
+  const comps = st.comp || [{ n: isSol ? 'Sun' : st.n, cls: st.cls, T: st.T, R: st.R, M: st.M, L: st.L }];
+  const Ltot = comps.reduce((s, c) => s + c.L, 0), Mtot = comps.reduce((s, c) => s + c.M, 0), bin = comps.length > 1;
+  const rnd = rng(hashStr(st.id));
+  const planets = (isSol ? SOL_PLANETS : st.planets || []).map(d => isSol ? d : Object.assign({}, d, { kind: 'planet', Rkm: d.R * RE_KM, exo: true, cls: 'Exoplanet' }));
+  const aU = planets.map(p => p.a * UAU).sort((x, y) => x - y), innerA = aU.length ? aU[0] : Infinity;
+  const sepMin = bin ? st.orbit.a * UAU * (1 - st.orbit.e) : Infinity;
+  g.add(new THREE.AmbientLight(0x2a3550, .55));
+  const mkItem = (b, extra) => { const it = Object.assign({ id: b.n, name: b.n, kind: b.kind, body: b, pos: () => b.pos, rad: () => b.R(), follow: true,
+    focusDist() { if (b.kind === 'moon') return b.R() * 6; if (b.kind === 'star') return b.R() * 5.5; let d = b.R() * 5; if (S.moons && b.moons && b.moons.length) d = Math.max(d, b.moons[b.moons.length - 1].dist * 2.6); return d; } }, extra); b.item = it; items.push(it);
+    labels.push({ el: mkLabel(b.n, b.kind === 'moon' ? 'moon' : b.kind === 'star' ? 'star' : ''), pos: () => b.pos, item: it, on: false, show: b.kind === 'moon' ? () => S.moons && camera.position.distanceTo(b.pos) < Math.max(b.dist * 22, 6) : null }); return it; };
+
+  /* ---- stars ---- */
+  const starBodies = comps.map((c, ci) => {
+    c.Rt = c.R * RSUN_U; c.Rx = Math.max(Math.min(9 * Math.sqrt(c.R), .3 * innerA, .18 * sepMin), c.Rt);
+    const pivot = new THREE.Group(), col = tempColor(c.T), bright = col.clone().lerp(new THREE.Color(1, 1, 1), .25);
+    const mat = new THREE.MeshBasicMaterial({ color: bright }), mesh = new THREE.Mesh(sphereGeo, mat);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: .7 }));
+    const dot = makeDot(col, 18, true), light = new THREE.PointLight(bright, bin ? 1.1 : 1.7, 0, 0);
+    pivot.add(mesh, halo, dot, light); g.add(pivot); if (isSol) paint(mat, T.sun(), 256, 128);
+    const b = { kind: 'star', n: c.n, c, pivot, mesh, halo, dot, pos: new V3(), moons: [], R: () => S.trueScale ? c.Rt : c.Rx, scaleNode: mesh, spinPerDay: TAU / 25.4 };
+    b.setScale = () => { const R = b.R(); mesh.scale.setScalar(R); halo.scale.setScalar(R * 9); };
+    bodies.push(b);
+    mkItem(b, { info: () => ({ kind: 'Star · ' + c.cls, title: c.n, sub: bin ? 'Binary star, orbit ' + fmt(st.orbit.P, 1) + ' years' : (isSol ? 'Centre of the Solar System' : fmtLy(st.d) + ' from the Sun'),
+      stats: [['Temperature', fmt(c.T) + ' K'], ['Radius', fmt(c.R, c.R < .1 ? 4 : 2) + ' × Sun · ' + fmt(c.R * 695700) + ' km'], ['Mass', fmt(c.M, 3) + ' × Sun'], ['Luminosity', fmt(c.L, c.L < .01 ? 5 : 2) + ' × Sun'], ['Age', st.age || 'unknown'], ['Distance from Sun', st.d ? fmtLy(st.d) : '0']],
+      desc: ci === 0 ? st.desc : (c.cls.includes('white dwarf') ? 'A white dwarf: the dense, cooling core left behind by a star that has run out of fuel.' : 'The companion star of the pair.'),
+      acts: [{ label: 'Whole system', fn: () => overview() }] }) });
+    return b;
+  });
+  let binOrbit = null; const binM0 = 0;
+  if (bin) { binOrbit = mkOrbit(st.orbit.a * UAU, st.orbit.e, 0, 0, .6); const ol = orbitLine(binOrbit, 1, 0x9fb8e8, .4); const f = comps[1].M / Mtot, s2 = ol.clone(); ol.scale.setScalar(f); s2.scale.setScalar(-(1 - f)); g.add(ol, s2); orbitLines.push(ol, s2); }
+
+  /* ---- planets and moons ---- */
+  const cap = (p) => { const a = p.a * UAU; let gap = Infinity; for (const b of aU) if (b !== a) gap = Math.min(gap, Math.abs(b - a)); return gap; };
+  const planetBodies = planets.map((d, pi) => {
+    const Re = d.Rkm / RE_KM, a = d.a * UAU, gap = cap(d);
+    const o = d.exo ? mkOrbit(a, d.e || 0, rnd() * 2 * D2R, rnd() * TAU, rnd() * TAU) : mkOrbit(a, d.e, d.i * D2R, d.node * D2R, (d.varpi - d.node) * D2R);
+    const M0 = d.exo ? rnd() * TAU : (d.L - d.varpi) * D2R, Pd = d.exo ? d.P : d.P * 365.25;
+    const pivot = new THREE.Group(), tilt = new THREE.Group(); tilt.rotation.z = (d.tilt || 0) * D2R; pivot.add(tilt); g.add(pivot);
+    const teq = d.exo ? comps[0].T * Math.sqrt(comps[0].R * .00465047 / (2 * d.a)) * Math.pow(.7, .25) : 0;
+    const mat = new THREE.MeshStandardMaterial({ color: d.col || '#9aa6b8', roughness: .95, metalness: 0 }), spin = new THREE.Mesh(sphereGeo, mat); tilt.add(spin);
+    paint(mat, d.exo ? exoTexFn(d, teq) : TEX[d.tex], 256, 128);
+    if (d.clouds) { const cm = new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false, roughness: 1 }), cl = new THREE.Mesh(sphereGeo, cm); cl.scale.setScalar(1.012); tilt.add(cl); queueTex(() => { cm.map = sphereTex(256, 128, T.clouds()); cm.needsUpdate = true; }); }
+    const atmo = d.atmo || (d.exo && Re > 2.6 ? '#9ab8ff' : null);
+    if (atmo) { const am = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: atmo, transparent: true, opacity: .13, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false })); am.scale.setScalar(1.045); tilt.add(am); }
+    if (d.rings) { const sat = d.rings === 'saturn', rm = new THREE.Mesh(sat ? ringGeo(1.24, 2.27) : ringGeo(1.6, 2.05), new THREE.MeshLambertMaterial({ map: sat ? ringTexSaturn : ringTexUranus, transparent: true, side: THREE.DoubleSide, depthWrite: false })); rm.rotation.x = -Math.PI / 2; tilt.add(rm); }
+    const dot = makeDot(d.col || '#9fb8e8', 7); pivot.add(dot);
+    const b = { kind: d.kind, n: d.n, def: d, pivot, tilt, spin, dot, o, M0, Pd, pos: new V3(), moons: [], Re, teq, R: null, spinPerDay: d.rot ? TAU / (Math.abs(d.rot) / 24) * Math.sign(d.rot) : 0 };
+    b.Rx = Math.max(Math.min(1.6 * Math.pow(Re, .55), .22 * a, .45 * gap), 0); b.Rt = d.Rkm / KM_U; b.R = () => S.trueScale ? b.Rt : b.Rx;
+    b.setScale = () => tilt.scale.setScalar(b.R());
+    { const ol = orbitLine(o, 1, new THREE.Color(d.col || '#9fb8e8').lerp(new THREE.Color(1, 1, 1), .35), .42); g.add(ol); b.line = ol; orbitLines.push(ol); }
+    bodies.push(b);
+    const hzIn = Math.sqrt(Ltot / 1.1), hzOut = Math.sqrt(Ltot / .36), inHZ = d.exo && d.a >= hzIn && d.a <= hzOut;
+    mkItem(b, { info: () => {
+      const stats = d.exo
+        ? [['Radius', fmt(Re, 2) + ' Earths' + (d.est ? ' (est.)' : '')], ['Orbit distance', fmt(d.a, d.a < .1 ? 4 : 3) + ' AU'], ['Orbital period', fmtPeriod(d.P)], ['Equilibrium temp.', fmt(teq) + ' K · ' + fmt(teq - 273.15) + ' °C'], ['Eccentricity', fmt(d.e || 0, 2)]]
+        : [['Radius', fmt(d.Rkm) + ' km · ' + fmt(Re, 2) + ' Earths'], ['Mass', d.mass], ['Orbit distance', fmt(d.a, 3) + ' AU · ' + fmt(d.a * 149.5978707, 0) + ' million km'], ['Year', fmtPeriod(d.P * 365.25)], ['Day', (d.rot < 0 ? 'retrograde ' : '') + fmtPeriod(Math.abs(d.rot) / 24)], ['Axial tilt', fmt(d.tilt, 1) + '°'], ['Gravity', d.g], ['Temperature', d.temp], ['Moons', d.moons]];
+      return { kind: d.cls, title: d.n, sub: d.exo ? 'Orbits ' + comps[0].n : 'Orbits the Sun at ' + fmt(d.a, 2) + ' AU',
+        tags: [...(inHZ ? [['Habitable zone', 'good']] : []), ...(d.cand ? [['Candidate']] : []), ...(d.approx ? [['Approximate orbit']] : [])],
+        stats, desc: d.exo ? (d.note ? d.note + '. ' : '') + 'Surface appearance is illustrative: only the size and orbit are measured.' : d.desc, acts: [{ label: 'Whole system', fn: () => overview() }] }; } });
+    // moons
+    const mdef = !d.exo && MOONS[d.n];
+    if (mdef) {
+      const plane = new THREE.Group(); plane.rotation.z = mdef.inc * D2R; pivot.add(plane); b.plane = plane; const hasRing = !!d.rings;
+      mdef.list.forEach((m, mi) => {
+        const mpivot = new THREE.Group(), mm = new THREE.MeshStandardMaterial({ color: MOON_COL[m.tex] || '#999', roughness: .95 }), mesh = new THREE.Mesh(sphereGeo, mm); mpivot.add(mesh); plane.add(mpivot);
+        paint(mm, TEX[m.tex], 128, 64);
+        if (m.atmo) { const am = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: m.atmo, transparent: true, opacity: .3, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false })); am.scale.setScalar(1.1); mesh.add(am); }
+        const mdot = makeDot('#c8d2e6', 5); mpivot.add(mdot);
+        const mb = { kind: 'moon', n: m.n, def: m, parent: b, pivot: mpivot, mesh, dot: mdot, pos: new V3(), moons: [], idx: mi, ph: rnd() * TAU, Pd: m.P, dist: 1, spinPerDay: TAU / m.P };
+        mb.Rt = m.R / KM_U; mb.Rx = Math.min(1.44 * Math.pow(m.R / RE_KM, .55), .4 * b.Rx); mb.R = () => S.trueScale ? mb.Rt : mb.Rx;
+        mb.setScale = () => { mesh.scale.setScalar(mb.R()); mb.dist = S.trueScale ? m.a / KM_U : b.Rx * ((hasRing ? 3.1 : 2.2) + 1.55 * mi); if (mb.line) mb.line.scale.setScalar(mb.dist); };
+        const ol = ringLine(1, 0x9fb8e8, .28, 96); plane.add(ol); mb.line = ol; mb.parentLine = true; orbitLines.push(ol); mb.mesh.userData.moon = true;
+        b.moons.push(mb); bodies.push(mb);
+        mkItem(mb, { info: () => ({ kind: 'Moon of ' + d.n, title: m.n, sub: fmt(m.a) + ' km from ' + d.n,
+          stats: [['Radius', fmt(m.R, 1) + ' km'], ['Orbit distance', fmt(m.a) + ' km'], ['Orbital period', fmtPeriod(m.P) + (d.n === 'Neptune' && m.n === 'Triton' ? ' (retrograde)' : '')]], desc: m.desc, acts: [{ label: 'Back to ' + d.n, fn: () => select(b.item, true) }] }) });
+      });
+    }
+    return b;
+  });
+
+  /* ---- belts, habitable zone ---- */
+  const beltDefs = isSol ? [{ n: 'Asteroid belt', in: 2.1, out: 3.3, cnt: 5500, col: '#a99b88', tilt: .1, desc: 'Millions of rocky bodies between Mars and Jupiter, left over from a planet that never formed. Together they hold less than 1% of Earth’s mass.' }, { n: 'Kuiper Belt', in: 30, out: 50, cnt: 4500, col: '#8aa3c8', tilt: .2, desc: 'A wide ring of icy bodies beyond Neptune, home to Pluto and many other dwarf planets, and the source of many short-period comets.' }] : (st.belts || []).map(b => ({ ...b, tilt: .12, desc: b.desc || 'A belt of small rocky and icy bodies, detected from the infrared glow of its dust.' }));
+  for (const bd of beltDefs) {
+    const n = bd.cnt, pos = new Float32Array(n * 3), aa = new Float32Array(n), ph = new Float32Array(n), yy = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const a = bd.in + (bd.out - bd.in) * Math.pow(rnd(), .85); aa[i] = a * UAU; ph[i] = rnd() * TAU; yy[i] = (rnd() - .5) * a * UAU * bd.tilt; }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: bd.col, size: 1.7, sizeAttenuation: false, map: dotTex, transparent: true, opacity: .8, depthWrite: false })); pts.frustumCulled = false; g.add(pts);
+    const mid = (bd.in + bd.out) / 2 * UAU, belt = { n: bd.n, pts, aa, ph, yy, n, Ms: Mtot, kind: 'belt', pos: new V3(0, 0, 0), R: () => bd.out * UAU, moons: [], def: bd };
+    belts.push(belt); bodies.push(belt);
+    const it = { id: bd.n, name: bd.n, kind: 'belt', pos: () => new V3(mid, 0, 0), rad: () => 0, pick: false, follow: false, noReticle: true, focusDist: () => bd.out * UAU * 2.8,
+      info: () => ({ kind: 'Belt', title: bd.n, sub: fmt(bd.in) + '–' + fmt(bd.out) + ' AU from the star', stats: [['Inner edge', fmt(bd.in) + ' AU'], ['Outer edge', fmt(bd.out) + ' AU']], desc: bd.desc + ' Positions drawn here are representative, not individual catalogued objects.', acts: [{ label: 'Whole system', fn: () => overview() }] }) };
+    items.push(it); labels.push({ el: mkLabel(bd.n, 'region'), pos: () => new V3(mid, 0, 0), item: it, on: false, show: () => S.belts });
+  }
+  const hzIn = Math.sqrt(Ltot / 1.1) * UAU, hzOut = Math.sqrt(Ltot / .36) * UAU, hz = new THREE.Group();
+  { const m = new THREE.Mesh(new THREE.RingGeometry(hzIn, hzOut, 128), new THREE.MeshBasicMaterial({ color: 0x5fd39a, transparent: true, opacity: .045, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; hz.add(m); hz.add(ringLine(hzIn, 0x5fd39a, .3, 128), ringLine(hzOut, 0x5fd39a, .3, 128)); }
+  if (!bin) g.add(hz);
+  if (!bin) labels.push({ el: mkLabel('Habitable zone', 'ring'), pos: () => new V3(Math.sqrt(Ltot / .36) * UAU, 0, 0), on: false, show: () => S.hz });
+
+  /* ---- extents ---- */
+  let extent = 0; for (const p of planets) extent = Math.max(extent, p.a * UAU * (1 + (p.e || 0))); for (const b of beltDefs) extent = Math.max(extent, b.out * UAU); if (bin) extent = Math.max(extent, st.orbit.a * UAU * (1 + st.orbit.e));
+  const start = st.start || Math.max(extent * 2.6, comps[0].Rx * 10, 20);
+
+  function setScales() {
+    for (const b of bodies) if (b.setScale) b.setScale();
+    for (const b of planetBodies) for (const m of b.moons) m.setScale();
+    // moons are placed relative to the parent's *current* size
+    for (const b of planetBodies) for (const m of b.moons) m.setScale();
+  }
+  setScales();
+  const tv = new V3();
+  function update(dt) {
+    const d = time.days;
+    if (bin) { orbitPos(binOrbit, keplerSolve(binM0 + TAU * d / (st.orbit.P * 365.25), st.orbit.e), tv); const f = comps[1].M / Mtot; starBodies[0].pivot.position.copy(tv).multiplyScalar(f); starBodies[1].pivot.position.copy(tv).multiplyScalar(-(1 - f)); }
+    for (const b of planetBodies) { orbitPos(b.o, keplerSolve(b.M0 + TAU * d / b.Pd, b.o.e), b.pivot.position); for (const m of b.moons) { const th = m.ph + TAU * d / m.Pd; m.pivot.position.set(m.dist * Math.cos(th), 0, -m.dist * Math.sin(th)); } }
+    g.updateMatrixWorld(true);
+    const f = focalPx(), cp = camera.position;
+    for (const b of bodies) {
+      if (b.pivot) b.pos.setFromMatrixPosition(b.pivot.matrixWorld);
+      if (b.dot) { const px = b.R() / Math.max(cp.distanceTo(b.pos), 1e-9) * f; b.dot.visible = px < (b.kind === 'star' ? 10 : 3.2); }
+      const sp = b.spin || b.mesh; if (sp && time.playing && b.spinPerDay) { let w = b.spinPerDay * time.rate * time.dir; if (Math.abs(w) > 2.5) w = Math.sign(w) * .35; sp.rotation.y += w * dt; }
+    }
+    for (const bt of belts) { const pa = bt.pts.geometry.attributes.position.array, om = TAU / 365.25 * Math.sqrt(bt.Ms); for (let i = 0; i < bt.n; i++) { const a = bt.aa[i], th = bt.ph[i] + om * d / Math.pow(a / UAU, 1.5); pa[i*3] = a * Math.cos(th); pa[i*3+1] = bt.yy[i]; pa[i*3+2] = -a * Math.sin(th); } bt.pts.geometry.attributes.position.needsUpdate = true; }
+  }
+  function overview() { cam.follow = null; cam.tTarget.set(0, 0, 0); cam.offset.set(0, 0, 0); cam.tDist = start; cam.pitch = Math.max(cam.pitch, .35); }
+  function applyOpts() {
+    for (const b of orbitLines) b.visible = S.orbits;
+    for (const b of planetBodies) for (const m of b.moons) { m.pivot.visible = S.moons; m.line.visible = S.orbits && S.moons; }
+    for (const bt of belts) bt.pts.visible = S.belts; hz.visible = S.hz && !bin; setScales();
+  }
+  function onSelect(it) { for (const b of bodies) if (b.line && !b.parentLine) b.line.material.opacity = (it && it.body === b) ? .95 : .42; for (const b of bodies) if (b.parentLine) b.line.material.opacity = (it && it.body === b) ? .9 : .28; }
+  return { st, g, items: () => items, labels, bodies, update, overview, start, extent, applyOpts, onSelect, comps, Ltot, firstItem: starBodies[0].item, planetBodies, aU };
+}
+
+const sysCache = new Map(); let sys = null;
+views.system = {
+  items: () => sys.items(), get labels() { return sys.labels; },
+  enter(o) {
+    const st = STARS.find(s => s.id === (o.star || 'sol')); if (!sys || sys.st !== st) { sys = sysCache.get(st.id) || buildSystem(st); sysCache.set(st.id, sys); }
+    scene.add(sys.g); $('tabSystem').textContent = st.sys || st.n; time.rate = st.speed || 10; time.days = st.id === 'sol' ? (Date.now() - Date.UTC(2000, 0, 1, 12)) / 864e5 : 0; time.t0 = time.days; time.playing = true; time.dir = 1;
+    setCam({ dist: sys.start, pitch: .55, yaw: .6, target: new V3(), min: 1e-4, max: Math.max(sys.start * 10, 400) }); sys.applyOpts(); setSpeedUI(); this.applyOptions();
+    select(sys.firstItem, false);
+  },
+  leave() { scene.remove(sys.g); sys.labels.forEach(L => { L.el.style.display = 'none'; L.on = false; }); },
+  applyOptions() { sys.applyOpts(); if (selected && !selected.noReticle && selected.kind === 'moon' && !S.moons) select(sys.firstItem, true); },
+  onSelect(it) { sys.onSelect(it); },
+  update(dt) { sys.update(dt); },
+};
+
+/* =====================================================================
+   NAVIGATION, TIME, SEARCH, LOOP
+   ===================================================================== */
+const cur = { star: 'sol' }, J2000 = Date.UTC(2000, 0, 1, 12);
+const LEVELS = ['group', 'galaxy', 'near', 'system'];
+async function go(lv, opts = {}) {
+  if (navBusy) return; navBusy = true;
+  try {
+    const first = !view; if (!first) { $('fade').classList.add('on'); await sleep(280); }
+    if (view) view.leave();
+    if (lv === 'system') cur.star = opts.star || cur.star || 'sol';
+    level = lv; view = views[lv]; view.enter(lv === 'system' ? { star: cur.star } : opts);
+    if (opts.select) { const it = view.items().find(i => i.name === opts.select || i.id === opts.select); if (it) select(it, true); }
+    syncUI(); $('fade').classList.remove('on');
+  } catch (e) { console.error(e); $('fade').classList.remove('on'); } finally { navBusy = false; }
+}
+function navigate(s) {   // s: { level, star, select }
+  if (s.level === level && (level !== 'system' || cur.star === (s.star || cur.star))) { const it = view.items().find(i => i.name === s.select); if (it) select(it, true); return; }
+  go(s.level, { star: s.star, select: s.select });
+}
+function syncUI() {
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.level === level)));
+  $('timebar').hidden = level !== 'system'; $('btnUp').disabled = level === 'group'; $('btnUp').style.opacity = level === 'group' ? .4 : 1;
+  const st = STARS.find(s => s.id === cur.star); $('tabSystem').textContent = (st && (st.sys || st.n)) || 'System';
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { if (b.dataset.level !== level) go(b.dataset.level, b.dataset.level === 'system' ? { star: cur.star } : {}); });
+$('btnUp').onclick = () => { const i = LEVELS.indexOf(level); if (i > 0) go(LEVELS[i - 1]); };
+canvas.addEventListener('pointerdown', () => { if (!$('menu').hidden) { $('menu').hidden = true; $('btnMenu').setAttribute('aria-pressed', 'false'); } });
+
+/* time controls */
+const rateOf = v => Math.pow(10, -1.5 + 6.5 * v / 100), vOf = r => (Math.log10(r) + 1.5) / 6.5 * 100;
+const fmtRate = r => r < 1 ? fmt(r * 24, 1) + ' h/s' : r < 365.25 ? fmt(r, r < 10 ? 1 : 0) + ' d/s' : fmt(r / 365.25, r / 365.25 < 10 ? 1 : 0) + ' yr/s';
+function setSpeedUI() { $('speed').value = vOf(time.rate); $('btnNow').textContent = cur.star === 'sol' ? 'Today' : 'Reset'; playIcon(); $('btnRev').setAttribute('aria-pressed', String(time.dir < 0)); }
+function playIcon() { $('icoPlay').innerHTML = time.playing ? '<path d="M8 5v14M16 5v14"/>' : '<path d="M7 5l12 7-12 7z"/>'; $('btnPlay').setAttribute('aria-label', time.playing ? 'Pause' : 'Play'); }
+$('speed').oninput = e => { time.rate = rateOf(+e.target.value); };
+$('btnPlay').onclick = () => { time.playing = !time.playing; playIcon(); };
+$('btnRev').onclick = () => { time.dir *= -1; $('btnRev').setAttribute('aria-pressed', String(time.dir < 0)); };
+$('btnNow').onclick = () => { time.days = cur.star === 'sol' ? (Date.now() - J2000) / 864e5 : 0; time.t0 = time.days; };
+function updateTimeUI() {
+  if (level !== 'system') return; $('rate').textContent = fmtRate(time.rate) + (time.dir < 0 ? ' ↩' : '');
+  let s; if (cur.star === 'sol') { const d = new Date(J2000 + time.days * 864e5); s = isNaN(d) ? '' : d.toISOString().slice(0, 10); } else s = 'T + ' + fmtPeriod(Math.abs(time.days - (time.t0 || 0)));
+  if ($('date').textContent !== s) $('date').textContent = s;
+}
+
+/* search and browse */
+const INDEX = (() => {
+  const L = [];
+  LOCAL.forEach(e => L.push({ n: e.n, m: e.t, lv: 'group', sec: 'Galaxies' }));
+  [...ARMS.map(a => [a.n, 'Spiral arm']), ['Sagittarius A*', 'Black hole'], ['Galactic Bar', 'Structure'], ...GAL_SITES.map(s => [s.n, s.t])].forEach(([n, m]) => L.push({ n, m, lv: 'galaxy', sec: 'Milky Way' }));
+  STARS.forEach(s => { L.push({ n: s.n, m: s.d ? fmtLy(s.d) : 'Home star', lv: 'near', sec: 'Nearby stars' });
+    (s.plan === 'sol' ? [] : s.planets || []).forEach(p => L.push({ n: p.n, m: 'Exoplanet · ' + (s.sys || s.n), lv: 'system', star: s.id, sec: 'Exoplanets' })); });
+  L.push({ n: 'Sun', m: 'Star · Solar System', lv: 'system', star: 'sol', sec: 'Solar System' });
+  SOL_PLANETS.forEach(p => { L.push({ n: p.n, m: p.cls, lv: 'system', star: 'sol', sec: 'Solar System' }); ((MOONS[p.n] || {}).list || []).forEach(m => L.push({ n: m.n, m: 'Moon of ' + p.n, lv: 'system', star: 'sol', sec: 'Solar System' })); });
+  L.push({ n: 'Asteroid belt', m: 'Belt', lv: 'system', star: 'sol', sec: 'Solar System' }, { n: 'Kuiper Belt', m: 'Belt', lv: 'system', star: 'sol', sec: 'Solar System' });
+  return L;
+})();
+const SEC_BY_LEVEL = { system: ['Solar System', 'Exoplanets', 'Nearby stars', 'Milky Way', 'Galaxies'], near: ['Nearby stars', 'Exoplanets', 'Solar System', 'Milky Way', 'Galaxies'], galaxy: ['Milky Way', 'Nearby stars', 'Galaxies', 'Solar System', 'Exoplanets'], group: ['Galaxies', 'Milky Way', 'Nearby stars', 'Solar System', 'Exoplanets'] };
+function renderResults() {
+  const q = $('q').value.trim().toLowerCase(), ul = $('results'); ul.innerHTML = '';
+  const hits = INDEX.filter(e => !q || e.n.toLowerCase().includes(q) || e.m.toLowerCase().includes(q)).slice(0, q ? 80 : 400);
+  if (!hits.length) { ul.innerHTML = '<li style="color:var(--mute);padding:12px 8px">Nothing matches that name. Try a planet, a moon, a star or a galaxy.</li>'; return; }
+  for (const sec of SEC_BY_LEVEL[level || 'system']) {
+    const rows = hits.filter(h => h.sec === sec); if (!rows.length) continue;
+    const h = document.createElement('li'); h.innerHTML = `<h4>${esc(sec)}</h4>`; ul.appendChild(h);
+    for (const r of rows) { const li = document.createElement('li'), b = document.createElement('button'); b.innerHTML = `<span class="nm">${esc(r.n)}</span><span class="mt">${esc(r.m)}</span>`; b.onclick = () => { closeBrowse(); navigate({ level: r.lv, star: r.star, select: r.n }); }; li.appendChild(b); ul.appendChild(li); }
+  }
+}
+function openBrowse() { $('browse').hidden = false; renderResults(); setTimeout(() => $('q').focus(), 30); }
+function closeBrowse() { $('browse').hidden = true; }
+$('btnSearch').onclick = () => $('browse').hidden ? openBrowse() : closeBrowse();
+$('btnCloseBrowse').onclick = closeBrowse; $('q').oninput = renderResults;
+addEventListener('keydown', e => { if (e.key === 'Escape') { closeBrowse(); $('menu').hidden = true; } else if (e.key === ' ' && document.activeElement === document.body && level === 'system') { e.preventDefault(); $('btnPlay').click(); } });
+
+/* main loop */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (view) {
+    if (level === 'system' && time.playing) time.days += time.dir * time.rate * dt;
+    view.update(dt); placeCamera(dt); renderer.render(scene, camera); updateLabels(); updateTimeUI();
+  }
+  requestAnimationFrame(frame);
+}
+window.GSE = { camera, go, select, navigate, time, S, cam, get view() { return view; }, get level() { return level; }, get selected() { return selected; }, get sys() { return sys; } };
+requestAnimationFrame(frame);
+go('system', { star: 'sol' }).then(() => { const l = $('loading'); if (l) l.remove(); });
+</script>
+
+</body>
+</html>
