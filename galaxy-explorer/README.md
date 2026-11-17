@@ -10,7 +10,7 @@ moons. Open `index.html` in a browser (it loads Three.js r128 from cdnjs).
 | Local Group | The Milky Way, Andromeda, Triangulum and 14 satellite and dwarf galaxies, placed from RA/Dec and distance |
 | Milky Way | A schematic spiral (four arms, central bar, bulge, halo, dust) with the Sun, Sagittarius A\* and nine landmarks placed from real galactic coordinates |
 | Neighborhood | 37 stars within about 43 light-years at their real positions, with height stems and distance rings |
-| System | A live Keplerian orrery for any star above: the Solar System (8 planets, Ceres, Pluto, Eris, 26 moons, asteroid and Kuiper belts) plus binaries and exoplanet systems such as TRAPPIST-1, 55 Cancri and Tau Ceti |
+| System | A live Keplerian orrery for any star above: the Solar System (8 planets, Ceres, Pluto, Eris, 22 moons, asteroid and Kuiper belts) plus binaries and exoplanet systems such as TRAPPIST-1, 55 Cancri and Tau Ceti |
 
 ## Controls
 
