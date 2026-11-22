@@ -12,6 +12,12 @@ WHY a mock provider at all?
     It satisfies the same `LLMProvider` Protocol as the real Claude provider, so
     the agent loop cannot tell them apart — the essence of the Strategy pattern.
 
+v0.2 — TWO SCRIPTS, ONE MOCK:
+    The mock looks at WHICH tools it is offered to decide which "agent" it is
+    playing: task tools -> the task assistant script; space tools -> Nova, the
+    kids' Space Guide. A real LLM does the same thing implicitly — the tools and
+    system prompt you send ARE its job description.
+
 WHAT IT IS NOT:
     This is NOT natural-language understanding. It uses crude keyword heuristics
     to decide which tools to call. That is fine: its job is to exercise the loop,
@@ -22,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
 from pytegration.agent.provider import (
     AssistantTurn,
@@ -30,6 +37,16 @@ from pytegration.agent.provider import (
     ToolResultsMessage,
     ToolSpec,
     UserMessage,
+)
+from pytegration.repositories.cosmos_catalog import CosmosCatalog
+
+# The mock guide needs to spot object names ("Mars", "the Moon") in questions.
+_CATALOG = CosmosCatalog()
+
+NOVA_HELLO = (
+    "Hi, I'm Nova, your space guide! 🚀 Try asking me: 'How much would I weigh on Mars?', "
+    "'Is Jupiter bigger than Earth?', 'How long ago did Andromeda's light leave?', "
+    "or 'What is my cosmic address?'"
 )
 
 
@@ -76,6 +93,55 @@ def _final_reply(conversation: list[ConversationItem]) -> str:
     return "Done."
 
 
+def _guide_plan(text: str) -> list[tuple[str, dict[str, Any]]]:
+    """Map a kid's question to (tool, arguments) steps using keyword heuristics."""
+    mentions = _CATALOG.find_mentions(text)
+    names = [m.slug for m in mentions]
+    # "Earth" is usually the reference point ("on Mars vs on Earth"), not the target.
+    targets = [n for n in names if n != "earth"] or names
+
+    if re.search(r"\b(weigh|weight|heavy|jump)", text) and targets:
+        number = re.search(r"(\d+(?:\.\d+)?)", text)
+        weight = float(number.group(1)) if number else 30.0
+        unit = "lb" if re.search(r"\b(lb|lbs|pounds?)\b", text) else "kg"
+        args = {"name": targets[0], "earth_weight": min(weight, 500.0), "unit": unit}
+        return [("weight_on_world", args)]
+    if re.search(r"\b(bigger|smaller|larger|compare|vs|versus|size)\b", text) and len(names) >= 2:
+        return [("compare_sizes", {"a": names[0], "b": names[1]})]
+    if re.search(r"\b(travel|fly|drive|get to|go to|reach|rocket|trip)\b", text) and targets:
+        return [("travel_time", {"name": targets[0]})]
+    if re.search(r"\b(light|ago|far|distance|see|time machine)\b", text) and targets:
+        return [("light_time_machine", {"name": targets[0]})]
+    if re.search(r"\b(address|where (am i|are we|do we live|is earth))\b", text):
+        return [("cosmic_address", {})]
+    if targets:
+        return [("lookup_object", {"name": targets[0]})]
+    return []
+
+
+def _guide_reply(conversation: list[ConversationItem]) -> str:
+    """Repeat the tools' kid-friendly summaries, then invite another question."""
+    summaries: list[str] = []
+    errors: list[str] = []
+    for item in conversation:
+        if isinstance(item, ToolResultsMessage):
+            for result in item.results:
+                if result.is_error:
+                    errors.append(result.content)
+                    continue
+                try:
+                    payload = json.loads(result.content)
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(payload, dict) and "summary" in payload:
+                    summaries.append(str(payload["summary"]))
+    if summaries:
+        return " ".join(summaries) + " What would you like to explore next?"
+    if errors:
+        return f"Hmm, I couldn't work that one out: {errors[-1]} Want to try another question?"
+    return NOVA_HELLO
+
+
 class MockProvider:
     """A scripted provider that drives the agent loop deterministically."""
 
@@ -94,6 +160,15 @@ class MockProvider:
         """
         text = _first_user_message(conversation)
         completed_rounds = sum(isinstance(i, ToolResultsMessage) for i in conversation)
+
+        # Which agent are we playing? Decide from the tools on offer.
+        if any(t.name == "lookup_object" for t in tools):
+            guide_plan = _guide_plan(text)
+            if completed_rounds < len(guide_plan):
+                tool_name, args = guide_plan[completed_rounds]
+                call = ToolCall(f"mock-{completed_rounds}", tool_name, args)
+                return AssistantTurn(text="", tool_calls=[call])
+            return AssistantTurn(text=_guide_reply(conversation), tool_calls=[])
 
         # Derive a tiny plan from the request.
         plan: list[str] = []

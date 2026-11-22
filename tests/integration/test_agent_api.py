@@ -49,3 +49,37 @@ async def test_agent_validates_input(client: AsyncClient) -> None:
     """An empty message is rejected by the request schema (422)."""
     response = await client.post(AGENT, json={"message": ""})
     assert response.status_code == 422
+
+
+# ----- Nova, the kids' Space Guide (v0.2) ------------------------------------------
+
+GUIDE = "/api/v1/agent/guide"
+
+
+async def test_guide_requires_auth(client: AsyncClient) -> None:
+    """The guide calls an LLM (real cost), so it stays behind the API key."""
+    client.headers.pop("X-API-Key", None)
+    assert (await client.post(GUIDE, json={"message": "hi"})).status_code == 401
+
+
+async def test_guide_answers_with_grounded_numbers(client: AsyncClient) -> None:
+    response = await client.post(
+        GUIDE, json={"message": "How much would I weigh on Mars if I weigh 30 kg?"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert [t["tool"] for t in body["trace"]] == ["weight_on_world"]
+    assert "11.3 kg" in body["reply"]  # 30 x 0.378, straight from the tested service
+
+
+async def test_guide_recovers_from_a_tool_error(client: AsyncClient) -> None:
+    """A domain error inside a tool becomes a friendly reply, not a failed request."""
+    response = await client.post(GUIDE, json={"message": "How much would I weigh on Andromeda?"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trace"][0]["ok"] is False
+    assert "no surface" in body["reply"]
+
+
+async def test_guide_input_is_bounded(client: AsyncClient) -> None:
+    assert (await client.post(GUIDE, json={"message": "x" * 501})).status_code == 422

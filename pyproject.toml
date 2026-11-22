@@ -29,8 +29,8 @@ build-backend = "setuptools.build_meta"
 # -----------------------------------------------------------------------------
 [project]
 name = "pytegration"
-version = "0.1.0"
-description = "Teaching-grade FastAPI Task Manager + Claude agent for Java developers learning Python."
+version = "0.2.0"
+description = "Teaching-grade FastAPI Task Manager + Claude agent + a Cosmic Explorer for kids, for Java developers learning Python."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -49,7 +49,7 @@ dependencies = [
     "uvicorn[standard]>=0.34,<1.0",
     "pydantic>=2.10,<3.0",
     "pydantic-settings>=2.7,<3.0",
-    "sqlalchemy>=2.0.36,<2.1",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
     "aiosqlite>=0.20,<1.0",
     "alembic>=1.14,<2.0",
     "anthropic>=0.45,<1.0",
@@ -82,6 +82,13 @@ Homepage = "https://github.com/dirjit/pytegration"
 #   project root and build artifacts.
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# WHY package-data? Non-Python files (the Cosmic Explorer's HTML/CSS/JS) are NOT
+#   included in a built wheel unless declared. Without this, `pip install .`
+#   (as in the Dockerfile) would ship an app whose /explore page is missing.
+#   JAVA NOTE: the equivalent of putting files under `src/main/resources`.
+[tool.setuptools.package-data]
+pytegration = ["web/*.html", "web/*.css", "web/*.js", "web/*.svg"]
 
 # =============================================================================
 # Tool configuration (collocated so newcomers find everything in one place).

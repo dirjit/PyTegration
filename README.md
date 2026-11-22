@@ -25,6 +25,30 @@ The whole thing runs **offline with no API key** thanks to a deterministic mock
 LLM provider, so you can study every concept (including the agent) without
 signing up for anything.
 
+### New in v0.2: 🚀 Cosmic Explorer, a universe map for kids
+
+The same architecture now also serves a page for **children aged about 7–12**
+at **`/explore`**. It aims to build a *mental map of the universe* and get
+them interested in space science:
+
+- 🔭 **Cosmic Zoom**: zoom out from Earth to the observable universe while
+  filling in your *cosmic address*.
+- 🪐 **Worlds**: 23 planets, moons, stars, galaxies and spacecraft, with
+  trip-time and size calculators.
+- ⏳ **Light Time Machine**: "the light from Andromeda set off before the first
+  modern humans lived".
+- ⚖️ **Space Gym**: your weight, jump height and age on other worlds.
+- 📏 **Scale Walk**: a beach-ball Sun and a peppercorn Earth 32 m away.
+- 🌙 **Tonight**: the Moon phase for today plus real sky missions.
+- 🧠 **Quiz**, 👩‍🚀 **Careers**, and 🤖 **Nova**, an AI space guide whose
+  numbers all come from tested code.
+- XP, ranks and badges, stored only in the child's browser.
+
+For developers it's [Module 11](docs/11-cosmic-explorer.md): a second domain,
+a public read-only API, a static page with a strict CSP, and a generic
+`Toolbox[C]` so one agent loop runs two agents. For parents and teachers
+there's a [classroom guide](docs/cosmic-explorer-for-educators.md).
+
 ---
 
 ## Quick start
@@ -41,6 +65,8 @@ make migrate
 
 # 4. Run the API (interactive docs at http://localhost:8000/docs).
 make run
+
+# 5. Open the kids' Cosmic Explorer at http://localhost:8000/explore
 ```
 
 Then, in another terminal:
@@ -83,6 +109,7 @@ and calls out the **Java analog** for every new concept.
 | 8 | [Security](docs/08-security.md) | API-key auth, authz, validation, rate limiting, dependency pinning |
 | 9 | [Observability](docs/09-observability.md) | structured logging, request IDs, centralized error handling |
 | 10 | [Agentic / LLM Integration](docs/10-agentic-llm.md) | `Protocol` interfaces, tool use, the agent loop, prompt caching, guardrails, evals |
+| 11 | [Cosmic Explorer (v0.2)](docs/11-cosmic-explorer.md) | DB-less repository, pure-function services, public vs protected routers, static files + CSP, `Generic[T]` toolbox, LLM safety for kids |
 
 ---
 
@@ -114,10 +141,17 @@ src/pytegration/
   repositories/  # data access (CRUD over the DB session)
   services/      # business logic (orchestrates repositories)
   api/           # FastAPI routers + dependency-injection wiring
-  agent/         # LLM provider abstraction, tools, and the agent loop
+  agent/         # LLM provider abstraction, toolboxes, and the agent loop
+  web/           # the Cosmic Explorer page (HTML/CSS/JS, no build step)
 tests/           # unit, integration, and agent eval tests
 docs/            # the long-form lessons linked above
 ```
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

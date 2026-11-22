@@ -32,6 +32,9 @@ logger = get_logger("pytegration.access")
 
 # Paths that should bypass correlation overhead and rate limiting (probes).
 _EXEMPT_PATHS = frozenset({"/health", "/ready"})
+# Static files for the Cosmic Explorer page: cheap to serve, and a page load
+# fetches several at once — they shouldn't eat a kid's API request budget.
+_EXEMPT_PREFIXES = ("/explore/",)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -122,7 +125,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return f"ip:{client.host}" if client else "ip:unknown"
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.url.path in _EXEMPT_PATHS:
+        path = request.url.path
+        # SYNTAX TIP: `str.startswith` accepts a TUPLE of prefixes.
+        if path in _EXEMPT_PATHS or path.startswith(_EXEMPT_PREFIXES):
             return await call_next(request)
 
         identity = self._identity(request)

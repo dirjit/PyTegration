@@ -28,7 +28,9 @@ from pytegration.agent.factory import build_provider
 from pytegration.agent.provider import LLMProvider
 from pytegration.core.config import Settings
 from pytegration.db.session import get_session_from_factory
+from pytegration.repositories.cosmos_catalog import CosmosCatalog
 from pytegration.repositories.task_repository import TaskRepository
+from pytegration.services.cosmos_service import CosmosService
 from pytegration.services.task_service import TaskService
 
 
@@ -80,3 +82,24 @@ def get_llm_provider(settings: SettingsDep) -> LLMProvider:
 
 
 ProviderDep = Annotated[LLMProvider, Depends(get_llm_provider)]
+
+
+# ----- Cosmic Explorer (v0.2) -------------------------------------------------
+# The catalog is immutable reference data, so we build it (and its name index)
+# ONCE per process. JAVA NOTE: a singleton-scoped bean, vs the request-scoped
+# session above.
+_COSMOS_CATALOG = CosmosCatalog()
+
+
+def get_cosmos_service() -> CosmosService:
+    """Provide a CosmosService over the shared, read-only catalog.
+
+    WHY a dependency at all, if it's so cheap? It's a test SEAM: tests pin the
+        clock for date-based features (the Moon phase) with
+        `app.dependency_overrides[get_cosmos_service] = lambda: CosmosService(
+        catalog, today=date(...))`.
+    """
+    return CosmosService(_COSMOS_CATALOG)
+
+
+CosmosServiceDep = Annotated[CosmosService, Depends(get_cosmos_service)]

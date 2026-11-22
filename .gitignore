@@ -10,7 +10,10 @@
 # Secrets / local config — NEVER commit these
 .env
 .env.*
-!.env.example          # ...but DO commit the documented template
+# ...but DO commit the documented template.
+# GOTCHA: gitignore has no inline comments — a trailing `# ...` on a pattern
+#   line becomes PART of the pattern, silently breaking it.
+!.env.example
 
 # Python virtual environment (re-created from requirements, never committed)
 .venv/

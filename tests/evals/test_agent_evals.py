@@ -21,6 +21,7 @@ import pytest
 from pytegration.agent.loop import run_agent
 from pytegration.agent.mock_provider import MockProvider
 from pytegration.agent.prompts import SYSTEM_PROMPT
+from pytegration.agent.tools import task_toolbox
 from pytegration.services.task_service import TaskService
 
 # SYNTAX TIP: `@pytest.mark.parametrize` runs the SAME test body once per row —
@@ -41,7 +42,7 @@ async def test_agent_uses_expected_tools(
     """The agent should call (at least) the tools each request implies."""
     result = await run_agent(
         provider=MockProvider(),
-        service=task_service,
+        toolbox=task_toolbox(task_service),
         user_message=message,
         system_prompt=SYSTEM_PROMPT,
         max_iterations=6,
@@ -74,8 +75,59 @@ async def test_agent_stops_at_iteration_cap(task_service: TaskService) -> None:
     with pytest.raises(AgentError, match="did not finish"):
         await run_agent(
             provider=_NeverStops(),
-            service=task_service,
+            toolbox=task_toolbox(task_service),
             user_message="loop forever",
             system_prompt=SYSTEM_PROMPT,
             max_iterations=3,
         )
+
+
+# ----- Nova, the kids' Space Guide (v0.2) ------------------------------------------
+# Evals for an educational agent check two things: it picks the GROUNDING tool for
+# the question (so numbers come from tested code), and its reply carries that fact.
+GUIDE_CASES = [
+    ("How much would I weigh on the Moon?", "weight_on_world", "Moon"),
+    ("Is Jupiter bigger than Earth?", "compare_sizes", "11 times wider"),
+    ("How long ago did Betelgeuse's light leave?", "light_time_machine", "550 years"),
+    ("How long would it take to fly to Mars?", "travel_time", "Mars"),
+    ("What is my cosmic address?", "cosmic_address", "Milky Way"),
+    ("Tell me about Pluto", "lookup_object", "dwarf planet"),
+]
+
+
+@pytest.mark.parametrize(("message", "expected_tool", "expected_text"), GUIDE_CASES)
+async def test_guide_uses_grounding_tools(
+    message: str, expected_tool: str, expected_text: str
+) -> None:
+    from pytegration.agent.guide_tools import guide_toolbox
+    from pytegration.agent.prompts import GUIDE_SYSTEM_PROMPT
+    from pytegration.repositories.cosmos_catalog import CosmosCatalog
+    from pytegration.services.cosmos_service import CosmosService
+
+    result = await run_agent(
+        provider=MockProvider(),
+        toolbox=guide_toolbox(CosmosService(CosmosCatalog())),
+        user_message=message,
+        system_prompt=GUIDE_SYSTEM_PROMPT,
+        max_iterations=6,
+    )
+    assert [step.tool for step in result.trace] == [expected_tool]
+    assert all(step.ok for step in result.trace)
+    assert expected_text in result.reply
+
+
+async def test_guide_without_a_space_topic_offers_ideas() -> None:
+    from pytegration.agent.guide_tools import guide_toolbox
+    from pytegration.agent.prompts import GUIDE_SYSTEM_PROMPT
+    from pytegration.repositories.cosmos_catalog import CosmosCatalog
+    from pytegration.services.cosmos_service import CosmosService
+
+    result = await run_agent(
+        provider=MockProvider(),
+        toolbox=guide_toolbox(CosmosService(CosmosCatalog())),
+        user_message="hello!",
+        system_prompt=GUIDE_SYSTEM_PROMPT,
+        max_iterations=6,
+    )
+    assert result.trace == []
+    assert "Nova" in result.reply

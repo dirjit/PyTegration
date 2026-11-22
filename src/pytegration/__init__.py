@@ -22,4 +22,4 @@ SYNTAX TIP:
 # Single source of truth for the version at runtime. (The packaging version
 # also lives in pyproject.toml; in a larger project you would derive one from
 # the other to avoid drift.)
-__version__ = "0.1.0"
+__version__ = "0.2.0"

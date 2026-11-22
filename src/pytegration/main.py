@@ -19,12 +19,17 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.types import Scope
 
 from pytegration import __version__
-from pytegration.api.router import api_v1_router, root_router
+from pytegration.api.router import api_v1_router, public_v1_router, root_router
 from pytegration.core.config import Settings, get_settings
 from pytegration.core.errors import register_exception_handlers
 from pytegration.core.logging import configure_logging, get_logger
@@ -32,6 +37,35 @@ from pytegration.core.middleware import RateLimitMiddleware, RequestContextMiddl
 from pytegration.db.session import create_engine, create_session_factory
 
 logger = get_logger(__name__)
+
+# The Cosmic Explorer web page ships INSIDE the package (see pyproject's
+# package-data), so it works from an installed wheel / Docker image too.
+WEB_DIR = Path(__file__).parent / "web"
+
+
+class SecureStaticFiles(StaticFiles):
+    """StaticFiles that adds browser security headers to every file it serves.
+
+    SECURITY: a strict Content-Security-Policy means the page may only load
+        scripts, styles and data from THIS server — no third-party trackers or
+        CDNs (a children's page should have none), and injected inline scripts
+        won't run. `nosniff` stops browsers guessing content types.
+    JAVA NOTE: like adding headers in a Spring `ResourceHttpRequestHandler`
+        or a servlet filter scoped to /static/**.
+    """
+
+    CSP = (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'; form-action 'self'"
+    )
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Content-Security-Policy"] = self.CSP
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
 
 # SYNTAX TIP: `@asynccontextmanager` turns a generator into an async context
@@ -86,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="PyTegration",
         version=__version__,
-        summary="Teaching-grade Task Manager API + Claude agent.",
+        summary="Teaching-grade Task Manager API + Claude agent + Cosmic Explorer for kids.",
         lifespan=lifespan,
         # SECURITY: disable interactive docs and the OpenAPI schema in production
         #   so the full API surface is not advertised publicly.
@@ -128,7 +162,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ----- Routes ------------------------------------------------------------
     app.include_router(root_router)  # /health, /ready
-    app.include_router(api_v1_router)  # /api/v1/...
+    app.include_router(api_v1_router)  # /api/v1/... (API key required)
+    app.include_router(public_v1_router)  # /api/v1/cosmos/... (public, read-only)
+
+    # ----- Cosmic Explorer web page (v0.2) ----------------------------------
+    # `html=True` serves index.html for "/explore/". The page is plain HTML/CSS/JS
+    # that calls the public /api/v1/cosmos endpoints — no build step, no npm.
+    app.mount("/explore", SecureStaticFiles(directory=WEB_DIR, html=True), name="explore")
+
+    @app.get("/", include_in_schema=False)
+    async def _home() -> RedirectResponse:
+        """Send visitors at the site root straight to the explorer page."""
+        return RedirectResponse(url="/explore/")
 
     return app
 

@@ -11,27 +11,23 @@ SECURITY — this file is the agent's security boundary. Three rules:
        malicious payloads are rejected exactly like a hostile HTTP request.
     3. SAME AUTHORITY: every tool delegates to the SAME TaskService the REST API
        uses. The agent therefore cannot do anything a normal API client couldn't.
+
+v0.2: the generic validate-and-dispatch machinery moved to agent/toolbox.py so
+the Space Guide (agent/guide_tools.py) can reuse it. This module now just
+declares the task assistant's tools.
 """
 
 from __future__ import annotations
 
-import json
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from pytegration.agent.provider import ToolResult, ToolSpec
+from pytegration.agent.toolbox import Tool, Toolbox
 from pytegration.domain.enums import TaskPriority, TaskStatus
 from pytegration.schemas.task import TaskCreate, TaskUpdate
 from pytegration.services.task_service import TaskService
-
-# SYNTAX TIP: `Callable[[A, B], Awaitable[R]]` is the type of an async function
-#   taking (A, B) and returning R. It is how you type "a coroutine function" —
-#   the rough analog of a `Function`/`BiFunction` functional interface in Java.
-ToolHandler = Callable[[TaskService, BaseModel], Awaitable[dict[str, Any]]]
-
 
 # =============================================================================
 # Argument models — one Pydantic model per tool. These do double duty:
@@ -103,31 +99,8 @@ async def _summarize(service: TaskService, args: BaseModel) -> dict[str, Any]:
     return await service.summarize_tasks()
 
 
-@dataclass(frozen=True)
-class Tool:
-    """A registered tool: its advertised spec, its arg model, and its handler."""
-
-    name: str
-    description: str
-    args_model: type[BaseModel]
-    handler: ToolHandler
-
-    def spec(self) -> ToolSpec:
-        """Build the provider-facing spec, deriving JSON Schema from the model.
-
-        WHY derive the schema from the Pydantic model? One source of truth: the
-            exact shape we validate against is the exact shape we tell the model
-            about. They can never drift apart.
-        """
-        return ToolSpec(
-            name=self.name,
-            description=self.description,
-            input_schema=self.args_model.model_json_schema(),
-        )
-
-
 # THE ALLOW-LIST. To add a capability, add an entry here — nothing else can run.
-TOOLS: dict[str, Tool] = {
+TOOLS: dict[str, Tool[TaskService]] = {
     "create_task": Tool(
         name="create_task",
         description="Create a new task with a title and optional description/priority.",
@@ -155,35 +128,18 @@ TOOLS: dict[str, Tool] = {
 }
 
 
+def task_toolbox(service: TaskService) -> Toolbox[TaskService]:
+    """The task assistant's toolbox, bound to this request's TaskService."""
+    return Toolbox(service, TOOLS)
+
+
 def tool_specs() -> list[ToolSpec]:
-    """All tool specs to advertise to the model."""
+    """All task tool specs to advertise to the model."""
     return [tool.spec() for tool in TOOLS.values()]
 
 
 async def dispatch_tool_call(
     *, service: TaskService, call_id: str, name: str, arguments: dict[str, Any]
 ) -> ToolResult:
-    """Validate and execute one tool call, returning a result for the model.
-
-    SECURITY: this function is the single choke point where untrusted model
-        output becomes an action. It (1) checks the allow-list, (2) validates the
-        arguments, and only then (3) runs the handler. Any failure is returned as
-        an `is_error` result so the model can recover — we never crash the loop.
-    """
-    tool = TOOLS.get(name)
-    if tool is None:
-        # The model asked for a tool that does not exist (or is not allowed).
-        return ToolResult(call_id=call_id, content=f"Unknown tool: {name!r}", is_error=True)
-
-    try:
-        # Re-validate the untrusted arguments against the tool's Pydantic model.
-        validated = tool.args_model.model_validate(arguments)
-    except Exception as exc:
-        # WHY catch broad `Exception`? We deliberately turn ANY validation failure
-        #   into a tool error the model can read and recover from — a bad tool call
-        #   must never crash the agent loop.
-        return ToolResult(call_id=call_id, content=f"Invalid arguments: {exc}", is_error=True)
-
-    result = await tool.handler(service, validated)
-    # `json.dumps` serializes the result; the model reads this text as the output.
-    return ToolResult(call_id=call_id, content=json.dumps(result))
+    """Validate and execute one task tool call (see Toolbox.dispatch)."""
+    return await task_toolbox(service).dispatch(call_id=call_id, name=name, arguments=arguments)
