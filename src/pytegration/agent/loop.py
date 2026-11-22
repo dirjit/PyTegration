@@ -14,20 +14,38 @@ THE LOOP, IN ONE PARAGRAPH:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Protocol
 
 from pytegration.agent.provider import (
     AssistantMessage,
     ConversationItem,
     LLMProvider,
+    ToolResult,
     ToolResultsMessage,
+    ToolSpec,
     UserMessage,
 )
-from pytegration.agent.tools import dispatch_tool_call, tool_specs
 from pytegration.core.errors import AgentError
 from pytegration.core.logging import get_logger
-from pytegration.services.task_service import TaskService
 
 logger = get_logger(__name__)
+
+
+class ToolRunner(Protocol):
+    """What the loop needs from a toolbox: specs to advertise, and a dispatcher.
+
+    v0.2: the loop used to hard-code the task tools. Depending on this tiny
+        Protocol instead lets ONE loop drive any agent — the task assistant
+        (`task_toolbox`) or Nova the Space Guide (`guide_toolbox`).
+    JAVA NOTE: an interface the loop depends on; `Toolbox[C]` satisfies it
+        structurally, without declaring `implements`.
+    """
+
+    def specs(self) -> list[ToolSpec]: ...
+
+    async def dispatch(
+        self, *, call_id: str, name: str, arguments: dict[str, Any]
+    ) -> ToolResult: ...
 
 
 @dataclass(frozen=True)
@@ -51,7 +69,7 @@ class AgentResult:
 async def run_agent(
     *,
     provider: LLMProvider,
-    service: TaskService,
+    toolbox: ToolRunner,
     user_message: str,
     system_prompt: str,
     max_iterations: int,
@@ -61,7 +79,8 @@ async def run_agent(
     Args:
         provider: the LLM backend (Claude or mock) — programmed against the
             `LLMProvider` Protocol, so this function never knows which it is.
-        service: the TaskService the tools act through (caller's authority).
+        toolbox: the allow-listed tools this agent may use, already bound to the
+            service they act through (so they carry the caller's authority).
         user_message: the human's request.
         system_prompt: instructions + guardrails for the model.
         max_iterations: hard cap on model<->tool round trips.
@@ -73,7 +92,7 @@ async def run_agent(
         AgentError: if the model never produced a final answer within the cap.
     """
     conversation: list[ConversationItem] = [UserMessage(text=user_message)]
-    specs = tool_specs()
+    specs = toolbox.specs()
     trace: list[ToolCallTrace] = []
 
     # SYNTAX TIP: `range(max_iterations)` bounds the loop — there is no `while
@@ -91,8 +110,8 @@ async def run_agent(
         # Otherwise execute every requested tool call and feed results back.
         results = []
         for call in turn.tool_calls:
-            result = await dispatch_tool_call(
-                service=service, call_id=call.id, name=call.name, arguments=call.arguments
+            result = await toolbox.dispatch(
+                call_id=call.id, name=call.name, arguments=call.arguments
             )
             results.append(result)
             trace.append(

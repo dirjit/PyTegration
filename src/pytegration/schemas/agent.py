@@ -23,6 +23,20 @@ class AgentRequest(BaseModel):
     )
 
 
+class GuideRequest(BaseModel):
+    """Body for POST /agent/guide — a child's question for Nova, the Space Guide."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # SECURITY: kids' questions are short; a tighter bound than the task agent's
+    #   limits cost and the room available for prompt-injection payloads.
+    message: str = Field(
+        min_length=1,
+        max_length=500,
+        examples=["How much would I weigh on Mars if I weigh 30 kg?"],
+    )
+
+
 class ToolCallTrace(BaseModel):
     """One tool the agent executed, exposed for transparency/auditability."""
 

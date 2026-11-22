@@ -1,0 +1,288 @@
+<!doctype html>
+<!--
+  Cosmic Explorer — the kid-facing page for PyTegration v0.2.
+  LESSON: Module 11. See docs/11-cosmic-explorer.md
+
+  Plain HTML + CSS + JS, no build step and no third-party scripts. All data
+  comes from the public /api/v1/cosmos endpoints of THIS server. The strict
+  Content-Security-Policy (see main.py) is why there are no inline scripts or
+  style attributes in this file.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore the universe: zoom out from Earth to the edge of the observable universe, travel in a light time machine, and meet the people who explore space.">
+  <title>Cosmic Explorer</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+
+  <header class="topbar">
+    <a class="brand" href="#zoom">
+      <span class="brand-icon" aria-hidden="true">🚀</span>
+      <span>Cosmic Explorer</span>
+    </a>
+    <button class="rank" id="rank-button" type="button" aria-haspopup="dialog" aria-controls="badges-dialog">
+      <span class="rank-name" id="rank-name">Space Cadet</span>
+      <span class="rank-bar" aria-hidden="true"><span id="rank-fill"></span></span>
+      <span class="rank-xp"><span id="xp">0</span> XP</span>
+    </button>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Missions">
+    <button role="tab" data-tab="zoom" id="tab-zoom">🔭 Cosmic Zoom</button>
+    <button role="tab" data-tab="worlds" id="tab-worlds">🪐 Worlds</button>
+    <button role="tab" data-tab="time" id="tab-time">⏳ Time Machine</button>
+    <button role="tab" data-tab="gym" id="tab-gym">⚖️ Space Gym</button>
+    <button role="tab" data-tab="scale" id="tab-scale">📏 Scale Walk</button>
+    <button role="tab" data-tab="tonight" id="tab-tonight">🌙 Tonight</button>
+    <button role="tab" data-tab="quiz" id="tab-quiz">🧠 Quiz</button>
+    <button role="tab" data-tab="careers" id="tab-careers">👩‍🚀 Careers</button>
+    <button role="tab" data-tab="nova" id="tab-nova">🤖 Ask Nova</button>
+  </nav>
+
+  <main>
+    <div class="loading" id="loading" role="status">Warming up the telescope…</div>
+    <div class="error-banner" id="load-error" role="alert" hidden></div>
+
+    <!-- ===================== Cosmic Zoom ===================== -->
+    <section class="panel" role="tabpanel" id="panel-zoom" aria-labelledby="tab-zoom" hidden>
+      <div class="intro">
+        <h1>Where are you in the universe?</h1>
+        <p>Start at home and zoom out, step by step, to the edge of everything we can see.</p>
+      </div>
+      <div class="zoom-layout">
+        <div class="zoom-stage" id="zoom-stage" aria-hidden="true">
+          <div class="zoom-ring" id="zoom-ring">
+            <span class="zoom-emoji" id="zoom-emoji"></span>
+          </div>
+          <div class="zoom-prev" id="zoom-prev">
+            <span class="zoom-dot"></span>
+            <span class="zoom-prev-label" id="zoom-prev-label"></span>
+          </div>
+        </div>
+        <article class="card zoom-card" aria-live="polite">
+          <p class="eyebrow">Level <span id="zoom-level-num">1</span> of <span id="zoom-level-total">8</span></p>
+          <h2 id="zoom-title"></h2>
+          <dl class="stats">
+            <div><dt>About this wide</dt><dd id="zoom-size"></dd></div>
+            <div><dt>Light crosses it in</dt><dd id="zoom-light"></dd></div>
+          </dl>
+          <p id="zoom-contains"></p>
+          <p class="callout"><span aria-hidden="true">💡</span> <span id="zoom-analogy"></span></p>
+          <p class="callout fact"><span aria-hidden="true">🤯</span> <span id="zoom-fact"></span></p>
+          <div class="zoom-controls">
+            <button class="btn ghost" id="zoom-in" type="button">← Zoom in</button>
+            <ol class="zoom-steps" id="zoom-steps" aria-label="Zoom levels"></ol>
+            <button class="btn primary" id="zoom-out" type="button">Zoom out →</button>
+          </div>
+        </article>
+      </div>
+      <article class="card address-card">
+        <h2>✉️ Your cosmic address</h2>
+        <label class="field">
+          <span>Who lives here? <small>(stays on this device — never sent anywhere)</small></span>
+          <input id="address-name" type="text" maxlength="30" autocomplete="off" placeholder="Your first name">
+        </label>
+        <ol class="address" id="address-lines"></ol>
+        <p class="hint" id="address-hint">Zoom out to fill in more of your address!</p>
+      </article>
+    </section>
+
+    <!-- ===================== Worlds ===================== -->
+    <section class="panel" role="tabpanel" id="panel-worlds" aria-labelledby="tab-worlds" hidden>
+      <div class="intro">
+        <h1>Visit worlds near and far</h1>
+        <p>Tap a card to explore. Visit 8 worlds to earn the <strong>Planet Hopper</strong> badge.</p>
+      </div>
+      <div class="chips" id="world-filters" role="group" aria-label="Filter by type"></div>
+      <div class="grid worlds" id="world-grid"></div>
+      <dialog class="world-dialog" id="world-dialog" aria-labelledby="world-name">
+        <form method="dialog" class="dialog-close-form">
+          <button class="icon-btn" aria-label="Close">✕</button>
+        </form>
+        <div class="world-head">
+          <span class="world-emoji" id="world-emoji" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow" id="world-kind"></p>
+            <h2 id="world-name"></h2>
+            <p id="world-tagline"></p>
+          </div>
+        </div>
+        <dl class="stats" id="world-stats"></dl>
+        <p class="callout time"><span aria-hidden="true">⏳</span> <span id="world-light"></span></p>
+        <h3>Fun facts</h3>
+        <ul class="facts" id="world-facts"></ul>
+        <div class="world-actions">
+          <button class="btn" id="world-travel" type="button">🚀 How long to get there?</button>
+          <label class="inline-field">Compare with
+            <select id="world-compare"></select>
+          </label>
+        </div>
+        <div id="world-extra" aria-live="polite"></div>
+      </dialog>
+    </section>
+
+    <!-- ===================== Time Machine ===================== -->
+    <section class="panel" role="tabpanel" id="panel-time" aria-labelledby="tab-time" hidden>
+      <div class="intro">
+        <h1>The Light Time Machine</h1>
+        <p>Light is the fastest thing there is — but space is so big that even light takes ages to cross it.
+          When you look at a star, you see light that left it long ago. <strong>Every telescope is a time machine!</strong></p>
+      </div>
+      <article class="card time-card">
+        <label class="field" for="time-slider">How far away is the star?</label>
+        <input type="range" id="time-slider" min="0" max="1000" value="0" step="1">
+        <p class="time-distance" id="time-distance">1 light-year</p>
+        <p class="time-message" id="time-message" aria-live="polite"></p>
+        <div class="chips" id="time-presets" role="group" aria-label="Real places"></div>
+      </article>
+    </section>
+
+    <!-- ===================== Space Gym ===================== -->
+    <section class="panel" role="tabpanel" id="panel-gym" aria-labelledby="tab-gym" hidden>
+      <div class="intro">
+        <h1>Space Gym</h1>
+        <p>Your <strong>mass</strong> (how much "stuff" you're made of) is the same everywhere.
+          Your <strong>weight</strong> is how hard a world's gravity pulls on you — and that changes!</p>
+      </div>
+      <div class="two-col">
+        <article class="card">
+          <h2>⚖️ What would you weigh?</h2>
+          <form class="inline-form" id="weight-form">
+            <label class="field">Your weight on Earth
+              <input id="weight-input" type="number" min="1" max="500" step="0.1" value="30" required>
+            </label>
+            <div class="seg" role="radiogroup" aria-label="Unit">
+              <label><input type="radio" name="unit" value="kg" checked> kg</label>
+              <label><input type="radio" name="unit" value="lb"> lb</label>
+            </div>
+            <button class="btn primary" type="submit">Weigh me!</button>
+          </form>
+          <ul class="bars" id="weight-results" aria-live="polite"></ul>
+        </article>
+        <article class="card">
+          <h2>🎂 How old would you be?</h2>
+          <form class="inline-form" id="age-form">
+            <label class="field">Your age in Earth years
+              <input id="age-input" type="number" min="1" max="120" step="0.5" value="10" required>
+            </label>
+            <button class="btn primary" type="submit">Count my birthdays</button>
+          </form>
+          <ul class="list" id="age-results" aria-live="polite"></ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===================== Scale Walk ===================== -->
+    <section class="panel" role="tabpanel" id="panel-scale" aria-labelledby="tab-scale" hidden>
+      <div class="intro">
+        <h1>Walk the Solar System</h1>
+        <p>Shrink the Sun to the size of a ball and see where everything else would be.
+          Pictures in books squash the planets together — the real Solar System is <em>mostly empty space</em>.</p>
+      </div>
+      <article class="card">
+        <form class="inline-form" id="scale-form">
+          <label class="field">Make the Sun this many cm wide
+            <input id="scale-input" type="number" min="1" max="500" step="1" value="30" required>
+          </label>
+          <button class="btn primary" type="submit">Shrink it!</button>
+        </form>
+        <p class="hint">Scroll the track sideways to take the walk. Planets are drawn much bigger than their true size — at real scale most would be smaller than one pixel!</p>
+        <div class="track-wrap" id="track-wrap" tabindex="0" aria-label="Scale model track, scroll sideways">
+          <div class="track" id="track"></div>
+        </div>
+        <p class="callout fact" id="scale-star"></p>
+        <table class="table" id="scale-table">
+          <thead><tr><th scope="col">World</th><th scope="col">Size</th><th scope="col">Distance from the Sun</th><th scope="col">Your steps</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </article>
+    </section>
+
+    <!-- ===================== Tonight ===================== -->
+    <section class="panel" role="tabpanel" id="panel-tonight" aria-labelledby="tab-tonight" hidden>
+      <div class="intro">
+        <h1>Look up tonight!</h1>
+        <p>The best telescope to start with is your own eyes. Go outside with a grown-up, let your eyes adjust to the dark for 10 minutes, and try these missions.</p>
+      </div>
+      <div class="two-col">
+        <article class="card moon-card" aria-live="polite">
+          <h2>Tonight's Moon</h2>
+          <div class="moon-emoji" id="moon-emoji" aria-hidden="true">🌕</div>
+          <p class="moon-name" id="moon-name"></p>
+          <p id="moon-detail"></p>
+          <p class="callout" id="moon-tip"></p>
+        </article>
+        <article class="card">
+          <h2>Sky missions</h2>
+          <ul class="checklist" id="sky-missions"></ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===================== Quiz ===================== -->
+    <section class="panel" role="tabpanel" id="panel-quiz" aria-labelledby="tab-quiz" hidden>
+      <div class="intro">
+        <h1>Space Quiz</h1>
+        <p>Five questions. Every answer — right or wrong — comes with the reason why. Get them all to earn the <strong>Quiz Ace</strong> badge.</p>
+      </div>
+      <article class="card quiz-card" id="quiz-card">
+        <div id="quiz-body">
+          <button class="btn primary big" id="quiz-start" type="button">Start the quiz</button>
+        </div>
+      </article>
+    </section>
+
+    <!-- ===================== Careers ===================== -->
+    <section class="panel" role="tabpanel" id="panel-careers" aria-labelledby="tab-careers" hidden>
+      <div class="intro">
+        <h1>Who explores space?</h1>
+        <p>Thousands of people work in space science — and none of them started out knowing everything. They started out curious, just like you.</p>
+      </div>
+      <div class="grid careers" id="career-grid"></div>
+    </section>
+
+    <!-- ===================== Ask Nova ===================== -->
+    <section class="panel" role="tabpanel" id="panel-nova" aria-labelledby="tab-nova" hidden>
+      <div class="intro">
+        <h1>Ask Nova, your space guide</h1>
+        <p>Nova looks up every number in the Cosmic Explorer's star charts before answering. Don't share personal details like your full name or school — Nova doesn't need them!</p>
+      </div>
+      <article class="card nova-card">
+        <details class="pass" id="pass-details">
+          <summary>🎟️ Explorer Pass <span class="hint" id="pass-status">(ask a grown-up)</span></summary>
+          <label class="field">The grown-up running this site has the pass.
+            <input id="pass-input" type="password" autocomplete="off" maxlength="200">
+          </label>
+        </details>
+        <ol class="chat" id="chat" aria-live="polite"></ol>
+        <div class="chips" id="nova-suggestions" role="group" aria-label="Question ideas"></div>
+        <form class="chat-form" id="chat-form">
+          <label class="visually-hidden" for="chat-input">Your question</label>
+          <input id="chat-input" type="text" maxlength="500" autocomplete="off" placeholder="Ask about any planet, star or galaxy…" required>
+          <button class="btn primary" type="submit">Ask</button>
+        </form>
+      </article>
+    </section>
+  </main>
+
+  <dialog class="badges-dialog" id="badges-dialog" aria-labelledby="badges-title">
+    <form method="dialog" class="dialog-close-form"><button class="icon-btn" aria-label="Close">✕</button></form>
+    <h2 id="badges-title">Your explorer log</h2>
+    <p id="badges-rank"></p>
+    <ul class="badges" id="badges-list"></ul>
+    <button class="btn ghost small" id="reset-progress" type="button">Start over</button>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <footer class="footer">
+    <p>Made with Python &amp; FastAPI as part of <strong>PyTegration</strong>. Numbers are rounded; where scientists aren't sure yet, we say so.</p>
+  </footer>
+</body>
+</html>
